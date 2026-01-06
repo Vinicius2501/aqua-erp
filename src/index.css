@@ -1,0 +1,341 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+/* Tailwind v4 */
+@import "tailwindcss";
+
+/* -------------------------------------------------------------------------- */
+/* Tailwind v4 token mapping (shadcn/ui expects semantic tokens like bg-background,
+   text-foreground, border-border, etc).                                      */
+/* -------------------------------------------------------------------------- */
+@theme inline {
+  --color-border: hsl(var(--border));
+  --color-border-muted: hsl(var(--border-muted));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-hover: hsl(var(--primary-hover));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-warning-medium: hsl(var(--warning-medium));
+  --color-warning-light: hsl(var(--warning-light));
+
+  --color-text-primary: hsl(var(--text-primary));
+  --color-text-secondary: hsl(var(--text-secondary));
+  --color-text-disabled: hsl(var(--text-disabled));
+
+  --color-subtle-fill: hsl(var(--subtle-fill));
+  --color-soft-fill: hsl(var(--soft-fill));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  /* Sidebar tokens */
+  --color-sidebar-background: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-sidebar-muted: hsl(var(--sidebar-muted));
+
+  /* Chart (opcional) */
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  /* Sidebar (shadcn usa bg-sidebar, text-sidebar-foreground, etc.) */
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+}
+
+/* -------------------------------------------------------------------------- */
+/* ERP Financial - Design System
+   Paleta Aqua/Teal corporativa premium
+   Fonte: Gotham (fallback Inter, system-ui)                                   */
+/* -------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    /* Typography */
+    --font-gotham: "Gotham", "Inter", system-ui, sans-serif;
+
+    /* Primary - Aqua Teal */
+    --primary: 193 100% 15%; /* #003D4C */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 193 100% 23%; /* #006077 */
+
+    /* Secondary */
+    --secondary: 198 50% 28%; /* #24576B */
+    --secondary-foreground: 0 0% 100%;
+
+    /* Muted */
+    --muted: 195 17% 47%; /* #64828C */
+    /* IMPORTANTE: no tema claro, isso precisa ser “cinza”, não branco */
+    --muted-foreground: 0 0% 51%; /* #828282 */
+
+    /* Background / Foreground */
+    --background: 200 18% 94%; /* #EDF1F3 */
+    --foreground: 0 0% 12%; /* #1E1E1E */
+
+    /* Text Colors */
+    --text-primary: 0 0% 12%; /* #1E1E1E */
+    --text-secondary: 0 0% 51%; /* #828282 */
+    --text-disabled: 0 0% 75%; /* #BEBEBE */
+
+    /* Borders */
+    --border: 0 0% 85%; /* #D8D8D8 */
+    --border-muted: 0 0% 88%; /* #E1E1E1 */
+    --input: 0 0% 85%;
+    --ring: 193 100% 15%;
+
+    /* Fills */
+    --subtle-fill: 198 17% 83%; /* #CCD8DD */
+    --soft-fill: 198 19% 73%; /* #AABEC8 */
+
+    /* Cards / Popover */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 12%;
+
+    /* Accent */
+    --accent: 198 17% 83%;
+    --accent-foreground: 0 0% 12%;
+
+    /* Warning / Destructive / Success / Info */
+    --warning: 18 81% 49%; /* #DB521D */
+    --warning-foreground: 0 0% 100%;
+    --warning-medium: 26 90% 54%; /* #F4791D */
+    --warning-light: 38 90% 54%; /* #F4A71D */
+
+    --destructive: 18 81% 49%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 35%;
+    --success-foreground: 0 0% 100%;
+
+    --info: 193 100% 23%;
+    --info-foreground: 0 0% 100%;
+
+    /* Radius */
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-background: 193 100% 15%; /* #003D4C */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 193 100% 15%;
+    --sidebar-accent: 193 100% 23%; /* #006077 */
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 193 50% 25%;
+    --sidebar-ring: 0 0% 100%;
+    --sidebar-muted: 193 30% 40%;
+
+    /* Charts */
+    --chart-1: 193 100% 15%;
+    --chart-2: 198 50% 28%;
+    --chart-3: 195 17% 47%;
+    --chart-4: 18 81% 49%;
+    --chart-5: 152 60% 35%;
+
+
+  }
+
+  .dark {
+    --primary: 193 100% 23%;
+    --primary-foreground: 0 0% 100%;
+
+    --background: 200 20% 10%;
+    --foreground: 0 0% 95%;
+
+    --card: 200 18% 14%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 200 18% 14%;
+    --popover-foreground: 0 0% 95%;
+
+    --secondary: 198 40% 35%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 198 20% 25%;
+    --muted-foreground: 0 0% 70%;
+
+    --accent: 198 30% 20%;
+    --accent-foreground: 0 0% 95%;
+
+    --border: 200 15% 25%;
+    --border-muted: 200 15% 20%;
+    --input: 200 15% 25%;
+    --ring: 193 100% 40%;
+
+    --sidebar-background: 200 25% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-accent: 193 100% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 200 15% 20%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-gotham);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply tracking-tight;
+    font-family: var(--font-gotham);
+  }
+}
+
+@layer components {
+  /* Status badges */
+  .badge-draft {
+    @apply bg-muted/20 text-muted-foreground border border-muted/30;
+  }
+
+  .badge-pending {
+    @apply bg-info/10 text-info border border-info/30;
+  }
+
+  .badge-approved {
+    @apply bg-success/10 text-success border border-success/30;
+  }
+
+  .badge-rejected {
+    @apply bg-destructive/10 text-destructive border border-destructive/30;
+  }
+
+  .badge-urgent {
+    @apply bg-warning/10 text-warning border border-warning/30;
+  }
+
+  /* Card hover effect */
+  .card-interactive {
+    @apply transition-all duration-200 hover:shadow-md hover:border-primary/20;
+  }
+
+  /* Focus ring */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  /* DataGrid styles */
+  .data-grid-header {
+    @apply bg-subtle-fill/50 text-text-secondary font-medium text-xs uppercase tracking-wider;
+  }
+
+  .data-grid-row {
+    @apply border-b border-border-muted hover:bg-subtle-fill/30 transition-colors;
+  }
+
+  /* Sidebar active state */
+  .sidebar-item-active {
+    @apply bg-sidebar-accent text-sidebar-accent-foreground;
+  }
+
+  /* Form label */
+  .form-label {
+    @apply text-sm font-medium text-foreground;
+  }
+
+  /* Form hint */
+  .form-hint {
+    @apply text-xs text-text-secondary mt-1;
+  }
+
+  /* Form error */
+  .form-error {
+    @apply text-xs text-destructive mt-1;
+  }
+
+  /* Currency formatting */
+  .currency {
+    @apply font-mono tabular-nums;
+  }
+
+  /* Skeleton loading */
+  .skeleton-pulse {
+    @apply animate-pulse bg-subtle-fill rounded;
+  }
+}
+
+@layer utilities {
+  /* Scrollbar styling */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  /* Truncate multiple lines */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
