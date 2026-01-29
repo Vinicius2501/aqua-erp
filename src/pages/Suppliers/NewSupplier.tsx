@@ -1,640 +1,448 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
+import type { UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Building2,
-  Save,
-  MapPin,
-  Landmark,
-  User,
-  ShieldCheck,
-  Paperclip,
-  X,
-  Upload,
-  CalendarIcon,
-} from "lucide-react";
-import { format } from "date-fns";
-import { ptBR, enUS } from "date-fns/locale";
+import { ArrowLeft, Globe2, Save } from "lucide-react";
 
 import { useLanguage } from "@/contexts/LanguageContext";
 import { AppLayout } from "@/layouts/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Form,
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn, validateDocument } from "@/lib/utils";
+import type {
+  InternationalSupplierFormData,
+  NationalSupplierFormData,
+  SupplierScope,
+} from "@/types/supplier";
+import { NationalSupplierForm } from "./Forms/NationalSupplierForm";
+import { InternationalSupplierForm } from "./Forms/InternationalSupplierForm";
 
-const supplierFormSchema = z.object({
-  cnpj: z.string().min(14, "CNPJ inválido").max(18),
-  legalName: z.string().min(2, "Razão social é obrigatória"),
-  tradeName: z.string().min(2, "Nome fantasia é obrigatório"),
-  generalEmail: z.string().email("Email inválido"),
-  phone: z.string().optional(),
-  companyType: z.string().optional(),
-  companySize: z.string().optional(),
-  offeringType: z
-    .enum(["produto", "servico", "produtos_e_servicos"])
-    .optional(),
-  // Endereço
-  street: z.string().optional(),
-  number: z.string().optional(),
-  complement: z.string().optional(),
-  neighborhood: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  zipCode: z.string().optional(),
-  // Informações Bancárias
-  bank: z.string().optional(),
-  agency: z.string().optional(),
-  account: z.string().optional(),
-  accountType: z.enum(["checking", "savings"]).optional(),
-  pixKey: z.string().optional(),
-  // Contato Principal
-  contactName: z.string().optional(),
-  contactPhone: z.string().optional(),
-  contactEmail: z.string().email().optional().or(z.literal("")),
-  // Adicional
-  additionalInfo: z.string().optional(),
-  // Aprovação
-  isApproved: z.boolean().optional(),
-  approvedAt: z.date().optional(),
-  approvalValidUntil: z.date().optional(),
-});
+const defaultNationalValues: NationalSupplierFormData = {
+  supplierScope: "NATIONAL",
+  documentType: "CNPJ",
+  document: "",
+  legalName: "",
+  tradeName: "",
+  offeringType: "produto",
+  supplierType: "fornecedor",
+  tags: [],
+  zipCode: "",
+  street: "",
+  number: "",
+  complement: "",
+  neighborhood: "",
+  city: "",
+  state: "",
+  country: "Brasil",
+  bank: "",
+  agency: "",
+  account: "",
+  accountType: "corrente",
+  contactName: "",
+  contactPhone: "",
+  contactEmail: "",
+  simplesNacional: false,
+  contactAdditionalInfo: "",
+  isApproved: false,
+  approvedFrom: undefined,
+  approvedUntil: undefined,
+  requiresContract: false,
+};
 
-type SupplierFormData = z.infer<typeof supplierFormSchema>;
+const defaultInternationalValues: InternationalSupplierFormData = {
+  supplierScope: "INTERNATIONAL",
+  taxId: "",
+  legalName: "",
+  tradeName: "",
+  offeringType: "produto",
+  supplierType: "fornecedor",
+  tags: [],
+  postalCode: "",
+  street: "",
+  number: "",
+  complement: "",
+  district: "",
+  city: "",
+  state: "",
+  country: "",
+  bankName: "",
+  swiftCode: "",
+  ibanCode: "",
+  accountNumber: "",
+  accountHolder: "",
+  currency: "",
+  routingNumber: "",
+  bankAdditionalInfo: "",
+  hasIntermediaryBank: false,
+  intermediaryBankSwift: "",
+  intermediaryBankRouting: "",
+  contactName: "",
+  contactPhone: "",
+  contactEmail: "",
+  contactAdditionalInfo: "",
+  attachments: [],
+  isApproved: false,
+  approvedFrom: undefined,
+  approvedUntil: undefined,
+  requiresContract: false,
+};
 
-interface Attachment {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  file?: File;
-}
+const nationalSupplierSchema = z
+  .object({
+    supplierScope: z.literal("NATIONAL"),
+    documentType: z.enum(["CPF", "CNPJ"]),
+    document: z
+      .string()
+      .min(11, "Documento obrigatório")
+      .max(18, "Documento inválido"),
+    legalName: z.string().min(2, "Razão social obrigatória"),
+    tradeName: z.string().optional(),
+    offeringType: z.enum([
+      "produto",
+      "servico",
+      "produtos_e_servicos",
+      "funcionario",
+    ]),
+    supplierType: z.enum(["fornecedor", "cliente", "fornecedor_cliente"]),
+    tags: z.array(z.string()).optional(),
+    zipCode: z.string().min(8, "CEP obrigatório"),
+    street: z.string().min(2, "Logradouro obrigatório"),
+    number: z.string().min(1, "Número obrigatório"),
+    complement: z.string().optional(),
+    neighborhood: z.string().min(2, "Bairro obrigatório"),
+    city: z.string().min(2, "Cidade obrigatória"),
+    state: z.string().min(2, "UF inválida").max(2, "UF inválida"),
+    country: z.string().min(2, "País obrigatório"),
+    bank: z.string().min(2, "Banco obrigatório"),
+    agency: z.string().min(3, "Agência obrigatória"),
+    account: z.string().min(3, "Conta obrigatória"),
+    accountType: z.enum(["poupanca", "corrente"]),
+    contactName: z.string().min(2, "Contato obrigatório"),
+    contactPhone: z.string().min(8, "Telefone obrigatório"),
+    contactEmail: z.string().email("E-mail inválido"),
+    simplesNacional: z.boolean(),
+    contactAdditionalInfo: z.string().optional(),
+    isApproved: z.boolean(),
+    approvedFrom: z.date().optional(),
+    approvedUntil: z.date().optional(),
+    requiresContract: z.boolean(),
+  })
+  .superRefine((values, ctx) => {
+    if (!validateDocument(values.document, values.documentType)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Documento inválido",
+        path: ["document"],
+      });
+    }
+
+    if (values.isApproved && !values.approvedFrom) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe a data de aprovação",
+        path: ["approvedFrom"],
+      });
+    }
+
+    if (
+      values.approvedFrom &&
+      values.approvedUntil &&
+      values.approvedUntil < values.approvedFrom
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Data final deve ser maior que inicial",
+        path: ["approvedUntil"],
+      });
+    }
+  });
+
+const internationalSupplierSchema = z
+  .object({
+    supplierScope: z.literal("INTERNATIONAL"),
+    taxId: z.string().trim().optional(),
+    legalName: z.string().min(2, "Informe a razão social"),
+    tradeName: z.string().optional(),
+    offeringType: z.enum([
+      "produto",
+      "servico",
+      "produtos_e_servicos",
+      "funcionario",
+    ]),
+    supplierType: z
+      .enum(["fornecedor", "cliente", "fornecedor_cliente"])
+      .optional(),
+    tags: z.array(z.string()).optional(),
+    // Address
+    postalCode: z.string().optional(),
+    street: z.string().optional(),
+    number: z.string().optional(),
+    complement: z.string().optional(),
+    district: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    country: z.string().optional(),
+    // Payment
+    bankName: z.string().min(2, "Informe o banco"),
+    swiftCode: z.string().optional(),
+    ibanCode: z
+      .string()
+      .min(12, "IBAN deve ter pelo menos 12 caracteres")
+      .optional()
+      .or(z.literal("")),
+    accountNumber: z.string().optional(),
+    accountHolder: z.string().optional(),
+    currency: z.string().optional(),
+    routingNumber: z.string().min(1, "Routing Number é obrigatório"),
+    bankAdditionalInfo: z.string().optional(),
+    // Intermediary Bank
+    hasIntermediaryBank: z.boolean().optional(),
+    intermediaryBankSwift: z.string().optional(),
+    intermediaryBankRouting: z.string().optional(),
+    // Contact
+    contactName: z.string().min(2, "Informe o nome do contato"),
+    contactPhone: z.string().optional(),
+    contactEmail: z
+      .string()
+      .email("E-mail inválido")
+      .min(1, "Informe o e-mail do contato"),
+    contactAdditionalInfo: z.string().optional(),
+    // Attachments
+    attachments: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          filename: z.string(),
+          fileUrl: z.string().optional(),
+          fileSize: z.number().optional(),
+          fileType: z.string().optional(),
+          uploadedAt: z.union([z.string(), z.date()]).optional(),
+        }),
+      )
+      .optional(),
+    // Background check
+    isApproved: z.boolean(),
+    approvedFrom: z.date().optional(),
+    approvedUntil: z.date().optional(),
+    requiresContract: z.boolean(),
+  })
+  .superRefine((values, ctx) => {
+    // Validação: IBAN ou Número da Conta (pelo menos um obrigatório)
+    const hasIban = values.ibanCode && values.ibanCode.length >= 12;
+    const hasAccountNumber =
+      values.accountNumber && values.accountNumber.trim().length > 0;
+
+    if (!hasIban && !hasAccountNumber) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe o IBAN ou o Número da Conta",
+        path: ["ibanCode"],
+      });
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe o IBAN ou o Número da Conta",
+        path: ["accountNumber"],
+      });
+    }
+
+    // Validação: Banco Intermediário
+    if (values.hasIntermediaryBank) {
+      if (
+        !values.intermediaryBankSwift ||
+        values.intermediaryBankSwift.trim().length === 0
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Informe o SWIFT do banco intermediário",
+          path: ["intermediaryBankSwift"],
+        });
+      }
+      if (
+        !values.intermediaryBankRouting ||
+        values.intermediaryBankRouting.trim().length === 0
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Informe o Routing Number do banco intermediário",
+          path: ["intermediaryBankRouting"],
+        });
+      }
+    }
+
+    if (values.isApproved) {
+      if (!values.approvedFrom) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Informe a data de aprovação",
+          path: ["approvedFrom"],
+        });
+      }
+      if (!values.approvedUntil) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Informe a data final",
+          path: ["approvedUntil"],
+        });
+      }
+    }
+
+    if (
+      values.approvedFrom &&
+      values.approvedUntil &&
+      values.approvedUntil < values.approvedFrom
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Data final deve ser maior que inicial",
+        path: ["approvedUntil"],
+      });
+    }
+  });
+
+const supplierFormSchema = z.discriminatedUnion("supplierScope", [
+  nationalSupplierSchema,
+  internationalSupplierSchema,
+]);
+
+type SupplierFormSchema = z.infer<typeof supplierFormSchema>;
 
 const NewSupplier = () => {
   const navigate = useNavigate();
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const [isSaving, setIsSaving] = useState(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
-  const form = useForm<SupplierFormData>({
+  const form = useForm<SupplierFormSchema>({
     resolver: zodResolver(supplierFormSchema),
-    defaultValues: {
-      cnpj: "",
-      legalName: "",
-      tradeName: "",
-      generalEmail: "",
-      phone: "",
-      companyType: "",
-      companySize: "",
-      offeringType: undefined,
-      street: "",
-      number: "",
-      complement: "",
-      neighborhood: "",
-      city: "",
-      state: "",
-      zipCode: "",
-      bank: "",
-      agency: "",
-      account: "",
-      accountType: undefined,
-      pixKey: "",
-      contactName: "",
-      contactPhone: "",
-      contactEmail: "",
-      additionalInfo: "",
-      isApproved: false,
-      approvedAt: undefined,
-      approvalValidUntil: undefined,
-    },
+    defaultValues: defaultNationalValues,
   });
 
-  const watchIsApproved = form.watch("isApproved");
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const supplierScope = form.watch("supplierScope");
+  const isNational = supplierScope === "NATIONAL";
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const newAttachments: Attachment[] = Array.from(files).map((file) => ({
-        id: crypto.randomUUID(),
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        file,
-      }));
-      setAttachments((prev) => [...prev, ...newAttachments]);
-    }
-    e.target.value = "";
+  const handleScopeChange = (scope: SupplierScope) => {
+    form.reset(
+      scope === "NATIONAL" ? defaultNationalValues : defaultInternationalValues,
+    );
   };
 
-  const removeAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((att) => att.id !== id));
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const handleSubmit = async () => {
+  const onSubmit = async (values: SupplierFormSchema) => {
     setIsSaving(true);
-    // Simular chamada de API
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const payload = values.supplierScope === "NATIONAL" ? values : values;
+
+    console.debug("supplier:payload", payload);
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
     setIsSaving(false);
     toast.success(t("suppliers.createdSuccess"));
     navigate("/suppliers");
   };
 
-  const dateLocale = language === "pt" ? ptBR : enUS;
-
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Cabeçalho */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/suppliers")}
-              className="shrink-0"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground">
-                {t("suppliers.newSupplier")}
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {t("suppliers.newSupplierDescription")}
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/suppliers")}
+            className="shrink-0"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold text-foreground">
+              {t("suppliers.newSupplier")}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {t("suppliers.newSupplierDescription")}
+            </p>
           </div>
         </div>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(handleSubmit)}
-            className="space-y-6"
-          >
-            {/* Card de Informações Básicas */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Card>
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Building2 className="h-5 w-5 text-primary" />
-                  {t("suppliers.basicInfo")}
+                  <Globe2 className="h-5 w-5 text-primary" />
+                  {t("newSupplier.supplierScope")}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent>
                 <FormField
                   control={form.control}
-                  name="cnpj"
+                  name="supplierScope"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t("suppliers.cnpj")}</FormLabel>
                       <FormControl>
-                        <Input placeholder="00.000.000/0000-00" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="legalName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.companyName")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t("suppliers.companyNamePlaceholder")}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="tradeName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.tradeName")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t("suppliers.tradeNamePlaceholder")}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="generalEmail"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.email")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            placeholder="contato@empresa.com.br"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.phone")}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="(00) 00000-0000" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="companyType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("supplierDetail.companyType")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={
-                              language === "pt"
-                                ? "Ex: LTDA, S/A"
-                                : "E.g., LLC, Corp"
-                            }
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="companySize"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("supplierDetail.companySize")}</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
+                        <RadioGroup
                           value={field.value}
+                          onValueChange={(value: SupplierScope) => {
+                            handleScopeChange(value);
+                            field.onChange(value);
+                          }}
+                          className="grid gap-3 md:grid-cols-2"
                         >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue
-                                placeholder={
-                                  language === "pt"
-                                    ? "Selecione o porte"
-                                    : "Select size"
-                                }
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="MEI">
-                              {t("supplierDetail.sizeMEI")}
-                            </SelectItem>
-                            <SelectItem value="ME">
-                              {t("supplierDetail.sizeME")}
-                            </SelectItem>
-                            <SelectItem value="EPP">
-                              {t("supplierDetail.sizeEPP")}
-                            </SelectItem>
-                            <SelectItem value="Média">
-                              {t("supplierDetail.sizeMedium")}
-                            </SelectItem>
-                            <SelectItem value="Grande">
-                              {t("supplierDetail.sizeLarge")}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="offeringType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {t("supplierDetail.offeringType")}
-                        </FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue
-                                placeholder={
-                                  language === "pt"
-                                    ? "Selecione o tipo"
-                                    : "Select type"
-                                }
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="produto">
-                              {t("supplierDetail.offeringProduct")}
-                            </SelectItem>
-                            <SelectItem value="servico">
-                              {t("supplierDetail.offeringService")}
-                            </SelectItem>
-                            <SelectItem value="produtos_e_servicos">
-                              {t("supplierDetail.offeringBoth")}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Card de Endereço */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  {t("suppliers.address")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="zipCode"
-                  render={({ field }) => (
-                    <FormItem className="max-w-50">
-                      <FormLabel>{t("suppliers.zipCode")}</FormLabel>
-                      <FormControl>
-                        <Input placeholder="00000-000" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="md:col-span-3">
-                    <FormField
-                      control={form.control}
-                      name="street"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t("suppliers.street")}</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder={t("suppliers.streetPlaceholder")}
-                              {...field}
+                          <Label
+                            htmlFor="scope-national"
+                            className={cn(
+                              "flex w-full cursor-pointer items-center gap-3 rounded-lg border p-4 transition hover:border-primary",
+                              field.value === "NATIONAL" &&
+                                "border-primary bg-primary/5",
+                            )}
+                          >
+                            <RadioGroupItem
+                              id="scope-national"
+                              value="NATIONAL"
+                              className="mt-0.5"
                             />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                            <div className="space-y-1">
+                              <p className="font-medium">
+                                {t("newSupplier.scopeNational")}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {t("newSupplier.scopeNationalDescription")}
+                              </p>
+                            </div>
+                          </Label>
 
-                  <FormField
-                    control={form.control}
-                    name="number"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.number")}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="123" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="complement"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.complement")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t("suppliers.complementPlaceholder")}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="neighborhood"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.neighborhood")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t("suppliers.neighborhoodPlaceholder")}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="city"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.city")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t("suppliers.cityPlaceholder")}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="state"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.state")}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="SP" maxLength={2} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Card de Informações Bancárias */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Landmark className="h-5 w-5 text-primary" />
-                  {t("suppliers.bankInfo")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="bank"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.bank")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t("suppliers.bankPlaceholder")}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="accountType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.accountType")}</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue
-                                placeholder={t("suppliers.selectAccountType")}
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="checking">
-                              {t("suppliers.checking")}
-                            </SelectItem>
-                            <SelectItem value="savings">
-                              {t("suppliers.savings")}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="agency"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.agency")}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="0000" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="account"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.account")}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="00000-0" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="pixKey"
-                  render={({ field }) => (
-                    <FormItem className="max-w-md">
-                      <FormLabel>{t("suppliers.pixKey")}</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={t("suppliers.pixKeyPlaceholder")}
-                          {...field}
-                        />
+                          <Label
+                            htmlFor="scope-international"
+                            className={cn(
+                              "flex w-full cursor-pointer items-center gap-3 rounded-lg border p-4 transition hover:border-primary",
+                              field.value === "INTERNATIONAL" &&
+                                "border-primary bg-primary/5",
+                            )}
+                          >
+                            <RadioGroupItem
+                              id="scope-international"
+                              value="INTERNATIONAL"
+                              className="mt-0.5"
+                            />
+                            <div className="space-y-1">
+                              <p className="font-medium">
+                                {t("newSupplier.scopeInternational")}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {t("newSupplier.scopeInternationalDescription")}
+                              </p>
+                            </div>
+                          </Label>
+                        </RadioGroup>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -643,307 +451,19 @@ const NewSupplier = () => {
               </CardContent>
             </Card>
 
-            {/* Card de Contato */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <User className="h-5 w-5 text-primary" />
-                  {t("newSupplier.contact")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="contactName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t("supplierDetail.contactName")}</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={
-                            language === "pt"
-                              ? "Nome do contato principal"
-                              : "Primary contact name"
-                          }
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            {isNational ? (
+              <NationalSupplierForm
+                form={form as UseFormReturn<NationalSupplierFormData>}
+                isSaving={isSaving}
+              />
+            ) : (
+              <InternationalSupplierForm
+                form={form as UseFormReturn<InternationalSupplierFormData>}
+                isSaving={isSaving}
+              />
+            )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="contactPhone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.phone")}</FormLabel>
-                        <FormControl>
-                          <Input placeholder="(00) 00000-0000" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="contactEmail"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t("suppliers.email")}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            placeholder="contato@empresa.com.br"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="additionalInfo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        {t("supplierDetail.additionalInfo")}
-                      </FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder={
-                            language === "pt"
-                              ? "Informações adicionais sobre o fornecedor..."
-                              : "Additional information about the supplier..."
-                          }
-                          className="min-h-25"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Card de Status de Aprovação */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                  {t("supplierDetail.approvalStatus")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="isApproved"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">
-                          {t("supplierDetail.isApproved")}
-                        </FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          {language === "pt"
-                            ? "Marque se o fornecedor está homologado para prestação de serviços"
-                            : "Check if the supplier is approved for providing services"}
-                        </p>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {watchIsApproved && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                    <FormField
-                      control={form.control}
-                      name="approvedAt"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>
-                            {t("supplierDetail.approvedAt")}
-                          </FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  className={cn(
-                                    "w-full pl-3 text-left font-normal",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                >
-                                  {field.value ? (
-                                    format(field.value, "dd/MM/yyyy", {
-                                      locale: dateLocale,
-                                    })
-                                  ) : (
-                                    <span>
-                                      {language === "pt"
-                                        ? "Selecione a data"
-                                        : "Select date"}
-                                    </span>
-                                  )}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="start"
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                locale={dateLocale}
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="approvalValidUntil"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>
-                            {t("supplierDetail.validUntil")}
-                          </FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  className={cn(
-                                    "w-full pl-3 text-left font-normal",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                >
-                                  {field.value ? (
-                                    format(field.value, "dd/MM/yyyy", {
-                                      locale: dateLocale,
-                                    })
-                                  ) : (
-                                    <span>
-                                      {language === "pt"
-                                        ? "Selecione a data"
-                                        : "Select date"}
-                                    </span>
-                                  )}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="start"
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                locale={dateLocale}
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Card de Anexos */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Paperclip className="h-5 w-5 text-primary" />
-                  {t("newSupplier.attachments")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                  <input
-                    type="file"
-                    id="file-upload"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileChange}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer flex flex-col items-center gap-2"
-                  >
-                    <Upload className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {language === "pt"
-                        ? "Clique para anexar arquivos ou arraste e solte"
-                        : "Click to attach files or drag and drop"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      PDF, DOC, XLS, JPG, PNG
-                    </span>
-                  </label>
-                </div>
-
-                {attachments.length > 0 && (
-                  <div className="space-y-2">
-                    {attachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Paperclip className="h-4 w-4 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm font-medium">
-                              {attachment.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatFileSize(attachment.size)}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeAttachment(attachment.id)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Botões de Ação */}
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-end gap-3">
               <Button
                 type="button"
                 variant="outline"
@@ -953,7 +473,9 @@ const NewSupplier = () => {
               </Button>
               <Button type="submit" disabled={isSaving} className="gap-2">
                 <Save className="h-4 w-4" />
-                {isSaving ? t("common.saving") : t("common.save")}
+                {isSaving
+                  ? t("newSupplier.savingSupplier")
+                  : t("newSupplier.saveSupplier")}
               </Button>
             </div>
           </form>

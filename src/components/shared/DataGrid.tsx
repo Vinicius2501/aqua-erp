@@ -53,6 +53,8 @@ interface DataGridProps<T> {
   onRowClick?: (item: T) => void;
   emptyMessage?: string;
   className?: string;
+  defaultSortColumn?: string;
+  defaultSortDirection?: SortDirection;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -70,17 +72,54 @@ export function DataGrid<T extends { id: string }>({
   showPagination = true,
   onRowClick,
   className,
+  defaultSortColumn,
+  defaultSortDirection = "asc",
 }: DataGridProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [sortColumn, setSortColumn] = useState<string | null>(defaultSortColumn ?? null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortColumn ? defaultSortDirection : null);
+
+  // Ordenação dos dados
+  const sortedData = [...data].sort((a, b) => {
+    if (!sortColumn || !sortDirection) return 0;
+    
+    const aValue = (a as Record<string, unknown>)[sortColumn];
+    const bValue = (b as Record<string, unknown>)[sortColumn];
+    
+    // Tratamento para valores nulos/undefined
+    if (aValue == null && bValue == null) return 0;
+    if (aValue == null) return sortDirection === "asc" ? 1 : -1;
+    if (bValue == null) return sortDirection === "asc" ? -1 : 1;
+    
+    // Comparação de strings
+    if (typeof aValue === "string" && typeof bValue === "string") {
+      const comparison = aValue.localeCompare(bValue, undefined, { sensitivity: "base" });
+      return sortDirection === "asc" ? comparison : -comparison;
+    }
+    
+    // Comparação de números
+    if (typeof aValue === "number" && typeof bValue === "number") {
+      return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+    }
+    
+    // Comparação de datas (strings ISO)
+    if (typeof aValue === "string" && typeof bValue === "string") {
+      const aDate = new Date(aValue).getTime();
+      const bDate = new Date(bValue).getTime();
+      if (!isNaN(aDate) && !isNaN(bDate)) {
+        return sortDirection === "asc" ? aDate - bDate : bDate - aDate;
+      }
+    }
+    
+    return 0;
+  });
 
   //Pagination
-  const totalPages = Math.ceil(data.length / pageSize);
+  const totalPages = Math.ceil(sortedData.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
-  const paginatedData = data.slice(startIndex, endIndex);
+  const paginatedData = sortedData.slice(startIndex, endIndex);
 
   const handleSort = (columnKey: string) => {
     if (sortColumn === columnKey) {
@@ -184,7 +223,7 @@ export function DataGrid<T extends { id: string }>({
         )}
       </div>
       {/* Pagination */}
-      {showPagination && data.length > 0 && (
+      {showPagination && sortedData.length > 0 && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-text-secondary">
             <span>Mostrando</span>
@@ -205,7 +244,7 @@ export function DataGrid<T extends { id: string }>({
                 <SelectItem value="50">50</SelectItem>
               </SelectContent>
             </Select>
-            <span>de {data.length} registros</span>
+            <span>de {sortedData.length} registros</span>
           </div>
 
           <div className="flex items-center gap-1">

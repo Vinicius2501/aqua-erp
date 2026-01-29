@@ -12,6 +12,7 @@ interface KPICardProps {
   };
   variant?: "default" | "primary" | "success" | "warning" | "danger";
   className?: string;
+  onClick?: () => void;
 }
 
 const variantStyles = {
@@ -38,6 +39,7 @@ export function KPICard({
   trend,
   variant = "default",
   className,
+  onClick,
 }: KPICardProps) {
   const getTrendIcon = () => {
     if (!trend) return null;
@@ -58,36 +60,37 @@ export function KPICard({
   return (
     <div
       className={cn(
-        "p-6 rounded-lg border border-border transition-all duration-200 hover:shadow-card-hover",
+        "px-3 py-2 sm:p-6 rounded-lg border border-border transition-all duration-200 hover:shadow-card-hover cursor-pointer",
         variantStyles[variant],
         className
       )}
+      onClick={onClick}
     >
-      <div className="flex items-start justify-between mb-4">
-        <p className="text-sm font-medium text-text-secondary">{title}</p>
+      <div className="flex items-center gap-2 sm:gap-3">
         {Icon && (
           <div
             className={cn(
-              "h-10 w-10 rounded-lg flex items-center justify-center",
+              "h-8 w-8 sm:h-10 sm:w-10 rounded-lg flex items-center justify-center shrink-0",
               iconVariantStyles[variant]
             )}
           >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
         )}
+        <div className="flex items-center justify-between flex-1 sm:block">
+          <p className="text-sm sm:text-sm font-medium text-text-secondary">{title}</p>
+          <p className="text-lg sm:text-2xl font-semibold text-foreground tracking-tight">
+            {value}
+          </p>
+        </div>
       </div>
 
-      <div className="space-y-1">
-        <p className="text-2xl font-semibold text-foreground tracking-tight">
-          {value}
-        </p>
-        {subtitle && <p className="text-sm text-text-secondary">{subtitle}</p>}
-      </div>
+      {subtitle && <p className="text-sm text-text-secondary mt-1 hidden sm:block">{subtitle}</p>}
 
       {trend && TrendIcon && (
         <div
           className={cn(
-            "flex items-center gap-1 mt-3 text-sm",
+            "items-center gap-1 mt-3 text-sm hidden sm:flex",
             getTrendColor()
           )}
         >

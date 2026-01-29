@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { format } from "date-fns";
+import { format, differenceInDays, isPast } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import {
   ArrowLeft,
@@ -18,6 +18,11 @@ import {
   Edit,
   Save,
   X,
+  Plus,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  FileCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,10 +45,31 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  ContractRequestDialog,
+  type ContractRequestSupplierData,
+} from "@/components/shared/ContractRequestDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { AppLayout } from "@/layouts/AppLayout";
-import { suppliers } from "@/data/mockdata";
-import type { Supplier, SupplierOfferingType } from "@/types/domain";
+import {
+  suppliers,
+  supplierDocuments,
+  contractRequests,
+} from "@/data/mockdata";
+import type {
+  Supplier,
+  SupplierOfferingType,
+  SupplierDocument,
+  ContractRequest,
+} from "@/types/domain";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +83,81 @@ const SupplierDetail = () => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Supplier>>(supplier || {});
+
+  // Contract request dialog state
+  const [showContractRequestDialog, setShowContractRequestDialog] =
+    useState(false);
+
+  // Get supplier's contracts and pending requests
+  const supplierContracts = useMemo(() => {
+    if (!supplier) return [];
+    return supplierDocuments.filter(
+      (doc) =>
+        doc.supplierId === supplier.id && doc.categoryCode === "contract",
+    );
+  }, [supplier]);
+
+  const supplierContractRequests = useMemo(() => {
+    if (!supplier) return [];
+    return contractRequests.filter(
+      (req) => req.supplierId === supplier.id && req.status !== "finalizada",
+    );
+  }, [supplier]);
+
+  const hasPendingRequest = supplierContractRequests.length > 0;
+
+  const getContractValidityBadge = (doc: SupplierDocument) => {
+    if (!doc.validUntil) return null;
+    const validUntil = new Date(doc.validUntil);
+    const daysRemaining = differenceInDays(validUntil, new Date());
+
+    if (isPast(validUntil)) {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          {t("supplierDetail.contractExpired")}
+        </Badge>
+      );
+    }
+    if (daysRemaining <= 30) {
+      return (
+        <Badge
+          variant="outline"
+          className="text-xs border-amber-500 text-amber-500"
+        >
+          {t("supplierDetail.contractExpiringSoon", { days: daysRemaining })}
+        </Badge>
+      );
+    }
+    return (
+      <Badge
+        variant="outline"
+        className="text-xs border-green-500 text-green-500"
+      >
+        {t("supplierDetail.contractValid")}
+      </Badge>
+    );
+  };
+
+  const getRequestStatusBadge = (status: ContractRequest["status"]) => {
+    switch (status) {
+      case "pendente":
+        return (
+          <Badge variant="outline" className="text-xs">
+            <Clock className="h-3 w-3 mr-1" />
+            {t("supplierDetail.requestPending")}
+          </Badge>
+        );
+      case "em_confeccao":
+        return (
+          <Badge className="text-xs bg-blue-500">
+            <FileText className="h-3 w-3 mr-1" />
+            {t("supplierDetail.requestInProgress")}
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
 
   if (!supplier) {
     return (
@@ -93,14 +194,14 @@ const SupplierDetail = () => {
     toast.success(
       language === "pt"
         ? "Fornecedor atualizado com sucesso!"
-        : "Supplier updated successfully!"
+        : "Supplier updated successfully!",
     );
     setIsEditing(false);
   };
 
   const updateField = <K extends keyof Supplier>(
     field: K,
-    value: Supplier[K]
+    value: Supplier[K],
   ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -590,7 +691,7 @@ const SupplierDetail = () => {
                                 className={cn(
                                   "w-full justify-start text-left font-normal",
                                   !formData.approvedAt &&
-                                    "text-muted-foreground"
+                                    "text-muted-foreground",
                                 )}
                               >
                                 <Calendar className="mr-2 h-4 w-4" />
@@ -598,11 +699,11 @@ const SupplierDetail = () => {
                                   ? format(
                                       new Date(formData.approvedAt),
                                       "PPP",
-                                      { locale: dateLocale }
+                                      { locale: dateLocale },
                                     )
                                   : language === "pt"
-                                  ? "Selecione a data"
-                                  : "Select date"}
+                                    ? "Selecione a data"
+                                    : "Select date"}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent
@@ -619,7 +720,7 @@ const SupplierDetail = () => {
                                 onSelect={(date) =>
                                   updateField(
                                     "approvedAt",
-                                    date?.toISOString() || null
+                                    date?.toISOString() || null,
                                   )
                                 }
                                 initialFocus
@@ -642,7 +743,7 @@ const SupplierDetail = () => {
                                 className={cn(
                                   "w-full justify-start text-left font-normal",
                                   !formData.approvalValidUntil &&
-                                    "text-muted-foreground"
+                                    "text-muted-foreground",
                                 )}
                               >
                                 <Calendar className="mr-2 h-4 w-4" />
@@ -650,11 +751,11 @@ const SupplierDetail = () => {
                                   ? format(
                                       new Date(formData.approvalValidUntil),
                                       "PPP",
-                                      { locale: dateLocale }
+                                      { locale: dateLocale },
                                     )
                                   : language === "pt"
-                                  ? "Selecione a data"
-                                  : "Select date"}
+                                    ? "Selecione a data"
+                                    : "Select date"}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent
@@ -671,7 +772,7 @@ const SupplierDetail = () => {
                                 onSelect={(date) =>
                                   updateField(
                                     "approvalValidUntil",
-                                    date?.toISOString() || null
+                                    date?.toISOString() || null,
                                   )
                                 }
                                 initialFocus
@@ -727,7 +828,7 @@ const SupplierDetail = () => {
                               ? format(
                                   new Date(displayData.approvedAt),
                                   "PPP",
-                                  { locale: dateLocale }
+                                  { locale: dateLocale },
                                 )
                               : null
                           }
@@ -740,12 +841,162 @@ const SupplierDetail = () => {
                               ? format(
                                   new Date(displayData.approvalValidUntil),
                                   "PPP",
-                                  { locale: dateLocale }
+                                  { locale: dateLocale },
                                 )
                               : null
                           }
                         />
                       </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Requisitos de Contrato */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <FileText className="h-5 w-5 text-primary" />
+                  {t("supplierDetail.contractRequirement")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between rounded-md border p-4">
+                      <div className="space-y-1">
+                        <Label>{t("supplierDetail.requiresContract")}</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {t("supplierDetail.requiresContractDescription")}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={formData.requiresContract || false}
+                        onCheckedChange={(checked) =>
+                          updateField("requiresContract", checked)
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {displayData.requiresContract ? (
+                      <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <Tag className="h-8 w-8 text-amber-500" />
+                        <div>
+                          <p className="font-semibold text-amber-500">
+                            {t("supplierDetail.contractRequired")}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {t("supplierDetail.contractRequiredDescription")}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                        <Shield className="h-8 w-8 text-green-500" />
+                        <div>
+                          <p className="font-semibold text-green-500">
+                            {t("supplierDetail.contractNotRequired")}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {t("supplierDetail.contractNotRequiredDescription")}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Existing Contracts */}
+                    {supplierContracts.length > 0 && (
+                      <>
+                        <Separator />
+                        <div className="space-y-3">
+                          <h4 className="font-medium text-foreground text-sm flex items-center gap-2">
+                            <FileCheck className="h-4 w-4" />
+                            {t("supplierDetail.activeContracts")}
+                          </h4>
+                          <div className="space-y-2">
+                            {supplierContracts.map((contract) => (
+                              <div
+                                key={contract.id}
+                                className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
+                              >
+                                <div className="space-y-1">
+                                  <p className="font-medium text-sm">
+                                    {contract.fileName}
+                                  </p>
+                                  {contract.validUntil && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {t("supplierDetail.validUntil")}:{" "}
+                                      {format(
+                                        new Date(contract.validUntil),
+                                        "PPP",
+                                        {
+                                          locale: dateLocale,
+                                        },
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+                                {getContractValidityBadge(contract)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Pending Contract Requests */}
+                    {supplierContractRequests.length > 0 && (
+                      <>
+                        <Separator />
+                        <div className="space-y-3">
+                          <h4 className="font-medium text-foreground text-sm flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            {t("supplierDetail.pendingRequests")}
+                          </h4>
+                          <div className="space-y-2">
+                            {supplierContractRequests.map((request) => (
+                              <div
+                                key={request.id}
+                                className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
+                              >
+                                <div className="space-y-1">
+                                  <p className="font-medium text-sm">
+                                    {t("supplierDetail.contractRequestLabel")}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {format(
+                                      new Date(request.requestedAt),
+                                      "PPP",
+                                      {
+                                        locale: dateLocale,
+                                      },
+                                    )}
+                                  </p>
+                                </div>
+                                {getRequestStatusBadge(request.status)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Request Contract Button */}
+                    {displayData.requiresContract && !hasPendingRequest && (
+                      <>
+                        <Separator />
+                        <Button
+                          variant="outline"
+                          className="w-full gap-2"
+                          onClick={() => setShowContractRequestDialog(true)}
+                        >
+                          <Plus className="h-4 w-4" />
+                          {t("supplierDetail.requestContract")}
+                        </Button>
+                      </>
                     )}
                   </>
                 )}
@@ -782,6 +1033,19 @@ const SupplierDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Contract Request Dialog */}
+      <ContractRequestDialog
+        open={showContractRequestDialog}
+        onOpenChange={setShowContractRequestDialog}
+        origin="supplier_registration"
+        supplier={{
+          id: supplier.id,
+          legalName: supplier.legalName,
+          taxId: supplier.taxId,
+          scope: supplier.supplierScope || "NATIONAL",
+        }}
+      />
     </AppLayout>
   );
 };

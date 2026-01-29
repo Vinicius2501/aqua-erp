@@ -11,12 +11,13 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { purchaseOrders, users } from "@/data/mockdata";
 import { AppLayout } from "@/layouts/AppLayout";
 import type { PurchaseOrderExpanded } from "@/types/domain";
-import { Filter, Package, Plus, Receipt } from "lucide-react";
+import { Filter, Package, Plus, Receipt, FileText, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DataGrid } from "@/components/shared/DataGrid";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { StepBadge } from "@/components/shared/StepBadge";
+import { KPICard } from "@/components/shared/KPICard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,13 @@ const POLists = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [stepFilter, setStepFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Contagem de POs por status
+  const totalPOs = purchaseOrders.length;
+  const draftCount = purchaseOrders.filter(po => po.status === 'rascunho').length;
+  const pendingCount = purchaseOrders.filter(po => po.status === 'aguardando_aprovacao').length;
+  const approvedCount = purchaseOrders.filter(po => po.status === 'aprovada').length;
+  const rejectedCount = purchaseOrders.filter(po => po.status === 'reprovada').length;
 
   const userNameById = useMemo(
     () => Object.fromEntries(users.map((u) => [u.id, u.name])),
@@ -168,6 +176,50 @@ const POLists = () => {
           </DropdownMenu>
         </div>
 
+        {/* Cards de KPI */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          <KPICard
+            title={t("poList.total")}
+            value={totalPOs}
+            icon={FileText}
+            variant="default"
+            className={statusFilter === 'all' ? 'ring-2 ring-primary' : ''}
+            onClick={() => setStatusFilter('all')}
+          />
+          <KPICard
+            title={t("status.rascunho")}
+            value={draftCount}
+            icon={FileText}
+            variant="default"
+            className={statusFilter === 'rascunho' ? 'ring-2 ring-primary' : ''}
+            onClick={() => setStatusFilter(statusFilter === 'rascunho' ? 'all' : 'rascunho')}
+          />
+          <KPICard
+            title={t("status.aguardando_aprovacao")}
+            value={pendingCount}
+            icon={Clock}
+            variant="warning"
+            className={statusFilter === 'aguardando_aprovacao' ? 'ring-2 ring-amber-400' : ''}
+            onClick={() => setStatusFilter(statusFilter === 'aguardando_aprovacao' ? 'all' : 'aguardando_aprovacao')}
+          />
+          <KPICard
+            title={t("status.aprovada")}
+            value={approvedCount}
+            icon={CheckCircle}
+            variant="success"
+            className={statusFilter === 'aprovada' ? 'ring-2 ring-success' : ''}
+            onClick={() => setStatusFilter(statusFilter === 'aprovada' ? 'all' : 'aprovada')}
+          />
+          <KPICard
+            title={t("status.reprovada")}
+            value={rejectedCount}
+            icon={XCircle}
+            variant="danger"
+            className={statusFilter === 'reprovada' ? 'ring-2 ring-destructive' : ''}
+            onClick={() => setStatusFilter(statusFilter === 'reprovada' ? 'all' : 'reprovada')}
+          />
+        </div>
+
         {/* Filtros */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
@@ -223,6 +275,8 @@ const POLists = () => {
           onSearch={setSearchQuery}
           searchValue={searchQuery}
           onRowClick={(po) => navigate(`/pos/${po.id}`)}
+          defaultSortColumn="createdAt"
+          defaultSortDirection="asc"
         />
       </div>
     </AppLayout>

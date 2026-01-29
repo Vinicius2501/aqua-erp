@@ -16,6 +16,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { POHistoryEvent, POHistoryEventType } from "@/types/domain";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface POHistoryTimelineProps {
   events: POHistoryEvent[];
@@ -118,7 +120,7 @@ export function POHistoryTimeline({
   events,
   className,
 }: POHistoryTimelineProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const getEventTitle = (event: POHistoryEvent): string => {
     const translatedType = t(`history.eventType.${event.eventType}`);
     // Se a tradução existe e é diferente da chave, usa ela
@@ -126,6 +128,18 @@ export function POHistoryTimeline({
       return translatedType;
     }
     return event.title;
+  };
+
+  const formatEventDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return format(date, language === "pt" ? "dd/MM/yyyy" : "MM/dd/yyyy", {
+      locale: language === "pt" ? ptBR : undefined,
+    });
+  };
+
+  const formatEventTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return format(date, "HH:mm");
   };
 
   const sortedEvents = [...events].sort(
@@ -147,7 +161,7 @@ export function POHistoryTimeline({
   }
 
   return (
-    <div className={cn("space-y-0", className)}>
+    <div className={cn("-mt-1 space-y-0", className)}>
       {sortedEvents.map((event, index) => {
         const config = getEventConfig(event.eventType);
         const Icon = config.icon;
@@ -184,6 +198,19 @@ export function POHistoryTimeline({
                   <p className="text-xs font-medium text-foreground leading-tight">
                     {getEventTitle(event)}
                   </p>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                  <span>{formatEventDate(event.createdAt)}</span>
+                  <span>•</span>
+                  <span>{formatEventTime(event.createdAt)}</span>
+                  {event.performedByUserName && (
+                    <>
+                      <span>•</span>
+                      <span className="font-medium">
+                        {event.performedByUserName}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

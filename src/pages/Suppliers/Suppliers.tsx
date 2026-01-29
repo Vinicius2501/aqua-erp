@@ -41,7 +41,7 @@ const Suppliers = () => {
   const inactiveSuppliers = 0; // Mock: nenhum está inativo
   const approvedSuppliers = mockSuppliers.filter((s) => s.isApproved).length;
   const notApprovedSuppliers = mockSuppliers.filter(
-    (s) => !s.isApproved
+    (s) => !s.isApproved,
   ).length;
 
   // Filtra fornecedores baseado no termo de busca e status de aprovação
@@ -132,6 +132,24 @@ const Suppliers = () => {
         </Badge>
       ),
     },
+    {
+      key: "requiresContract",
+      header: t("suppliers.contractRequirement"),
+      render: (supplier) => (
+        <Badge
+          variant="outline"
+          className={
+            supplier.requiresContract
+              ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+              : "bg-green-500/10 text-green-600 border-green-500/30"
+          }
+        >
+          {supplier.requiresContract
+            ? t("suppliers.contractRequired")
+            : t("suppliers.contractNotRequired")}
+        </Badge>
+      ),
+    },
   ];
 
   return (
@@ -146,7 +164,7 @@ const Suppliers = () => {
         </div>
 
         {/* Cards de KPI */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <KPICard
             title={t("suppliers.totalSuppliers")}
             value={totalSuppliers}

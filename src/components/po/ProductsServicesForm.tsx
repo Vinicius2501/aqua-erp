@@ -11,6 +11,12 @@ import {
   AlertTriangle,
   Info,
   BrushCleaning,
+  Paperclip,
+  Upload,
+  FileCheck,
+  Clock,
+  FileText,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,7 +68,14 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SupplierFormDialog } from "@/components/suppliers/SupplierFormDialog";
+import {
+  ContractRequestDialog,
+  type ContractRequestSupplierData,
+} from "@/components/shared/ContractRequestDialog";
+import { ContractSelectorDialog } from "@/components/po/ContractSelectorDialog";
 import {
   Dialog,
   DialogContent,
@@ -71,7 +84,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn, getNextValidPaymentDate } from "@/lib/utils";
 
 import {
   beneficiaries as beneficiariesMockData,
@@ -85,6 +104,8 @@ import {
   payerAccountingMatrix as payerAccountingMatrixMockData,
   users as usersMockData,
   costCenterApprovers as costCenterApproversMockData,
+  supplierDocuments as supplierDocumentsMockData,
+  contractRequests as contractRequestsMockData,
 } from "@/data/mockdata";
 
 // Schema de validação do formulário
@@ -153,6 +174,8 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
 
+  console.log("ProductsServicesForm - poInitialData:", poInitialData);
+
   // TODO: Estes dados virão de chamadas de API no futuro
   const beneficiaries = beneficiariesMockData;
   const currencies = currenciesMockData;
@@ -165,6 +188,8 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   const payerAccountingMatrix = payerAccountingMatrixMockData;
   const users = usersMockData;
   const costCenterApprovers = costCenterApproversMockData;
+  const supplierDocuments = supplierDocumentsMockData;
+  const contractRequests = contractRequestsMockData;
 
   const paymentMethodNames: Record<string, string> = {
     TRANSFERENCIA: t("newPO.paymentMethodTypes.bankTransfer"),
@@ -177,10 +202,27 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSupplierDialogOpen, setIsSupplierDialogOpen] = useState(false);
   const [subtype, setSubtype] = useState<POSubtype<"produtos_servicos">>(
-    (poInitialData?.subtypeOfPO as POSubtype<"produtos_servicos">) || "produto"
+    (poInitialData?.subtypeOfPO as POSubtype<"produtos_servicos">) || "produto",
   );
   const [supplierSearchMode, setSupplierSearchMode] =
     useState<SupplierSearchMode>("taxId");
+
+  // Estados de seleção de contrato
+  const [selectedContractId, setSelectedContractId] = useState<string>("");
+  const [contractAction, setContractAction] = useState<
+    "select" | "request" | ""
+  >("");
+  const [showContractRequestDialog, setShowContractRequestDialog] =
+    useState(false);
+  const [showContractSelectorDialog, setShowContractSelectorDialog] =
+    useState(false);
+  const [contractRequestNotes, setContractRequestNotes] = useState("");
+  const [hasLocalContractRequest, setHasLocalContractRequest] = useState(false);
+  const [hasRequestedCancellation, setHasRequestedCancellation] =
+    useState(false);
+  const [hasCancelledPendingRequest, setHasCancelledPendingRequest] =
+    useState(false);
+  const contractRequestJustSubmittedRef = useRef(false);
 
   // Estados de aviso PortCo
   const [showPortCoWarning, setShowPortCoWarning] = useState(false);
@@ -197,16 +239,21 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
 
   // Estados do dia de pagamento
   const [paymentDay, setPaymentDay] = useState<string>(
-    poInitialData?.paymentWindowDays?.toString() || ""
+    poInitialData?.paymentWindowDays?.toString() || "",
   );
   const [isOutsidePaymentWindow, setIsOutsidePaymentWindow] = useState(
-    poInitialData?.isOutsidePaymentWindow || false
+    poInitialData?.isOutsidePaymentWindow || false,
   );
   const [customPaymentDay, setCustomPaymentDay] = useState(
-    poInitialData?.paymentWindowDays?.toString() || ""
+    poInitialData?.paymentWindowDays?.toString() || "",
   );
+  // Estado para rastrear se houve ajuste automático da data de pagamento
+  const [paymentDayAdjustment, setPaymentDayAdjustment] = useState<{
+    originalDay: string;
+    newDay: string;
+  } | null>(null);
   const [paymentJustification, setPaymentJustification] = useState(
-    poInitialData?.outsidePaymentJustification || ""
+    poInitialData?.outsidePaymentJustification || "",
   );
 
   // Estados da frequência de pagamento
@@ -214,7 +261,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     "unico" | "parcelado" | "recorrente" | ""
   >(poInitialData?.paymentTerms || "");
   const [installments, setInstallments] = useState<number>(
-    poInitialData?.installmentCount || 1
+    poInitialData?.installmentCount || 1,
   );
 
   // Estado do diálogo de alterações não salvas
@@ -233,6 +280,8 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
 
   // Constrói valores padrão a partir de poInitialData
   const getDefaultValues = () => {
+    console.log("getDefaultValues - poInitialData:", poInitialData);
+
     if (!poInitialData) {
       return {
         subtypeOfPO: "",
@@ -332,6 +381,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
           },
         ];
     return {
+      subtypeOfPO: poInitialData.subtypeOfPO || "",
       beneficiaryId: poInitialData.beneficiary?.id || "",
       currencyId: poInitialData.currency?.id || "cur-001",
       totalValue: poInitialData.totalValue || 0,
@@ -362,10 +412,48 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     };
   };
 
+  console.log("Default values:", getDefaultValues());
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: getDefaultValues(),
   });
+
+  // Atualizar estados quando poInitialData mudar (para casos de cópia de PO)
+  useEffect(() => {
+    if (poInitialData) {
+      // Atualizar subtype
+      if (poInitialData.subtypeOfPO) {
+        setSubtype(poInitialData.subtypeOfPO as POSubtype<"produtos_servicos">);
+      }
+
+      // Atualizar estados de pagamento
+      if (poInitialData.paymentWindowDays !== undefined) {
+        setPaymentDay(poInitialData.paymentWindowDays.toString());
+        setCustomPaymentDay(poInitialData.paymentWindowDays.toString());
+      }
+
+      if (poInitialData.isOutsidePaymentWindow !== undefined) {
+        setIsOutsidePaymentWindow(poInitialData.isOutsidePaymentWindow);
+      }
+
+      if (poInitialData.outsidePaymentJustification) {
+        setPaymentJustification(poInitialData.outsidePaymentJustification);
+      }
+
+      // Atualizar frequência de pagamento
+      if (poInitialData.paymentTerms) {
+        setPaymentFrequency(poInitialData.paymentTerms);
+      }
+
+      if (poInitialData.installmentCount) {
+        setInstallments(poInitialData.installmentCount);
+      }
+
+      // Resetar o formulário com os novos valores
+      form.reset(getDefaultValues());
+    }
+  }, [poInitialData]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -391,7 +479,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   const allocationTotal = useMemo(() => {
     return watchCostCenterItems.reduce(
       (sum, item) => sum + (item.amount || 0),
-      0
+      0,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(watchCostCenterItems)]);
@@ -410,14 +498,14 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   const filteredPaymentMethods = useMemo(() => {
     if (isBRL) {
       return paymentMethods.filter(
-        (pm) => pm.code === "TRANSFERENCIA" || pm.code === "BOLETO"
+        (pm) => pm.code === "TRANSFERENCIA" || pm.code === "BOLETO",
       );
     } else {
       return paymentMethods.filter(
         (pm) =>
           pm.code === "TRANSFER_USA" ||
           pm.code === "TRANSFER_NON_USA_SUPPLIER" ||
-          pm.code === "TRANSFER_CONTA_E_ORDEM"
+          pm.code === "TRANSFER_CONTA_E_ORDEM",
       );
     }
   }, [isBRL]);
@@ -433,7 +521,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     const currentPM = paymentMethods.find((p) => p.id === watchPaymentMethodId);
     if (currentPM) {
       const isCurrentPMValid = filteredPaymentMethods.some(
-        (pm) => pm.id === currentPM.id
+        (pm) => pm.id === currentPM.id,
       );
       if (!isCurrentPMValid) {
         form.setValue("paymentMethodId", "");
@@ -452,44 +540,115 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     return suppliers.find((s) => s.id === watchSupplierId);
   }, [watchSupplierId]);
 
-  // Calcular se o dia de pagamento será no mês seguinte
-  const paymentDateInfo = useMemo(() => {
-    if (!paymentDay || paymentDay === "ultimo") return null;
+  // Verificar se contrato é obrigatório (fornecedor exige contrato + subtipo é serviço)
+  const requiresContractSelection = useMemo(() => {
+    if (!selectedSupplier) return false;
+    return selectedSupplier.requiresContract && subtype === "servico";
+  }, [selectedSupplier, subtype]);
 
-    const today = new Date();
-    const currentDay = today.getDate();
-    const selectedDay = parseInt(paymentDay);
-
-    // Calcular a diferença de dias
-    let daysUntilPayment = selectedDay - currentDay;
-
-    // Se o dia já passou ou está muito próximo (menos que MIN_DAYS_ADVANCE)
-    if (daysUntilPayment < MIN_DAYS_ADVANCE) {
-      // Será no mês seguinte
-      const nextMonth = new Date(
-        today.getFullYear(),
-        today.getMonth() + 1,
-        selectedDay
-      );
-      return {
-        isNextMonth: true,
-        paymentDate: nextMonth,
-        daysUntil: daysUntilPayment,
-      };
-    }
-
-    // Será no mês atual
-    const currentMonth = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      selectedDay
+  // Obter TODOS os contratos do fornecedor (válidos e vencidos)
+  const supplierAllContracts = useMemo(() => {
+    if (!watchSupplierId) return [];
+    return supplierDocuments.filter(
+      (doc) =>
+        doc.supplierId === watchSupplierId &&
+        doc.categoryCode === "contract" &&
+        doc.isActive &&
+        doc.validUntil,
     );
-    return {
-      isNextMonth: false,
-      paymentDate: currentMonth,
-      daysUntil: daysUntilPayment,
-    };
-  }, [paymentDay, MIN_DAYS_ADVANCE]);
+  }, [watchSupplierId]);
+
+  // Obter contratos válidos do fornecedor selecionado
+  const supplierValidContracts = useMemo(() => {
+    const now = new Date();
+    return supplierAllContracts.filter(
+      (doc) => new Date(doc.validUntil!) > now,
+    );
+  }, [supplierAllContracts]);
+
+  // Verificar se já existe uma solicitação de contrato pendente para este fornecedor
+  const hasPendingContractRequest = useMemo(() => {
+    if (!watchSupplierId) return false;
+    return contractRequests.some(
+      (req) =>
+        req.supplierId === watchSupplierId &&
+        (req.status === "pendente" || req.status === "em_confeccao"),
+    );
+  }, [watchSupplierId]);
+  const effectiveHasPendingContractRequest =
+    hasPendingContractRequest && !hasCancelledPendingRequest;
+  const hasStartPendingContractRequest = useMemo(() => {
+    if (!watchSupplierId) return false;
+    return contractRequests.some(
+      (req) => req.supplierId === watchSupplierId && req.status === "pendente",
+    );
+  }, [watchSupplierId]);
+  const hasPendingOrLocalContractRequest =
+    effectiveHasPendingContractRequest || hasLocalContractRequest;
+  const hasStartPendingOrLocalContractRequest =
+    (hasStartPendingContractRequest && !hasCancelledPendingRequest) ||
+    hasLocalContractRequest;
+
+  // Resetar seleção de contrato quando fornecedor muda
+  useEffect(() => {
+    setSelectedContractId("");
+    setContractAction("");
+    setHasLocalContractRequest(false);
+    setHasRequestedCancellation(false);
+    setHasCancelledPendingRequest(false);
+    contractRequestJustSubmittedRef.current = false;
+  }, [watchSupplierId]);
+
+  const handleRequestCancelContract = () => {
+    if (hasRequestedCancellation) return;
+    setHasRequestedCancellation(true);
+    setHasCancelledPendingRequest(true);
+    setHasLocalContractRequest(false);
+    setContractAction("");
+    toast.success(t("newPO.contractRequestCancelled"), {
+      description: t("newPO.contractRequestCancelledDescription"),
+    });
+    setHasRequestedCancellation(false);
+  };
+
+  // Data de abertura fixa (no mount) para tornar a regra determinística
+  const openedAtRef = useRef<Date>(new Date());
+
+  // Calcular data de pagamento resolvida considerando a janela e antecedência mínima
+  const paymentDateInfo = useMemo(() => {
+    if (!paymentDay || isOutsidePaymentWindow) return null;
+
+    const openDate = openedAtRef.current;
+
+    // Determinar tipo de janela baseado na moeda
+    const domesticWindows = [5, 15, 25];
+    const intlWindows = [10, 20, "ultimo"];
+    const windows = isBRL ? domesticWindows : intlWindows;
+
+    // Normalizar valor selecionado
+    const selectedDay =
+      paymentDay === "ultimo" ? "ultimo" : parseInt(paymentDay, 10);
+    if (selectedDay !== "ultimo" && Number.isNaN(selectedDay)) return null;
+    if (!windows.includes(selectedDay as any)) return null;
+
+    const resolved = getNextValidPaymentDate({
+      openDate,
+      selectedDay: selectedDay as any,
+      minDaysAdvance: MIN_DAYS_ADVANCE,
+      isOutsidePaymentWindow,
+      isBRL,
+    });
+
+    const isNextMonth =
+      resolved.date.getMonth() !== openDate.getMonth() ||
+      resolved.date.getFullYear() !== openDate.getFullYear();
+
+    const daysUntil = Math.floor(
+      (resolved.date.getTime() - openDate.getTime()) / (24 * 60 * 60 * 1000),
+    );
+
+    return { isNextMonth, paymentDate: resolved.date, daysUntil };
+  }, [paymentDay, MIN_DAYS_ADVANCE, isOutsidePaymentWindow, isBRL]);
 
   // Calcular aprovadores necessários baseado nos centros de custo do rateio
   const requiredApprovers = useMemo(() => {
@@ -500,8 +659,8 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
       new Set(
         watchCostCenterItems
           .map((item) => item.costCenterId)
-          .filter((id) => id !== "")
-      )
+          .filter((id) => id !== ""),
+      ),
     );
 
     // Coletar aprovadores únicos para esses centros de custo
@@ -511,7 +670,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     uniqueCostCenterIds.forEach((costCenterId) => {
       const approversForCC = costCenterApprovers.filter(
         (approver) =>
-          approver.costCenterId === costCenterId && approver.isActive
+          approver.costCenterId === costCenterId && approver.isActive,
       );
 
       approversForCC.forEach((approver) => {
@@ -605,11 +764,27 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     );
   }, [isSection1Valid, watchExpenseNatureId, allocationTotal, watchTotalValue]);
 
-  // Validador: Seção 3 - Fornecedor
+  // Validador: Seção 3 - Fornecedor (inclui validação de contrato quando necessário)
   const isSection3Valid = useMemo(() => {
     if (!isSection2Valid) return false;
-    return watchSupplierId !== "";
-  }, [isSection2Valid, watchSupplierId]);
+    if (watchSupplierId === "") return false;
+
+    // Se contrato é obrigatório, verificar se há contrato selecionado ou solicitação criada
+    if (requiresContractSelection) {
+      // Válido se: tem contrato selecionado OU escolheu solicitar contrato
+      if (contractAction === "select" && selectedContractId) return true;
+      if (contractAction === "request") return true;
+      return false;
+    }
+
+    return true;
+  }, [
+    isSection2Valid,
+    watchSupplierId,
+    requiresContractSelection,
+    contractAction,
+    selectedContractId,
+  ]);
 
   // Validador: Seção 4 - Forma de Pagamento (apenas método)
   const isSection4Valid = useMemo(() => {
@@ -750,7 +925,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   // Função para obter empresa da matriz contábil
   const getCompanyFromMatrix = (
     costCenterId: string,
-    glAccountId: string
+    glAccountId: string,
   ): string => {
     if (!costCenterId || !glAccountId) return "";
 
@@ -759,7 +934,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
         m.costCenterId === costCenterId &&
         m.glAccountId === glAccountId &&
         m.isNationalPayment === isBRL &&
-        m.isActive
+        m.isActive,
     );
 
     return matrixEntry?.companyId || "";
@@ -770,7 +945,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     watchCostCenterItems.forEach((item, index) => {
       const newCompanyId = getCompanyFromMatrix(
         item.costCenterId,
-        item.glAccountId
+        item.glAccountId,
       );
       if (newCompanyId !== item.companyId) {
         form.setValue(`costCenterItems.${index}.companyId`, newCompanyId);
@@ -786,7 +961,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     const newCompanyId = getCompanyFromMatrix(value, glAccountId);
     form.setValue(
       `costCenterItems.${index}.balance`,
-      getBalanceCompany(value, glAccountId)
+      getBalanceCompany(value, glAccountId),
     ); // Resetar saldo
     form.setValue(`costCenterItems.${index}.companyId`, newCompanyId);
   };
@@ -798,7 +973,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
     const newCompanyId = getCompanyFromMatrix(costCenterId, value);
     form.setValue(
       `costCenterItems.${index}.balance`,
-      getBalanceCompany(costCenterId, value)
+      getBalanceCompany(costCenterId, value),
     ); // Resetar saldo
     form.setValue(`costCenterItems.${index}.companyId`, newCompanyId);
   };
@@ -854,7 +1029,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
 
     // Verifica se algum valor excede o saldo
     const hasBalanceIssue = watchCostCenterItems.some(
-      (item) => item.amount > item.balance
+      (item) => item.amount > item.balance,
     );
     if (hasBalanceIssue) return false;
 
@@ -901,7 +1076,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
         item.costCenterId &&
         item.glAccountId &&
         item.companyId &&
-        item.amount > 0
+        item.amount > 0,
     );
     if (!allCostCenterItemsValid) return false;
 
@@ -957,7 +1132,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
         const percentage = (item.amount / total) * 100;
         form.setValue(
           `costCenterItems.${index}.percentage`,
-          Number(percentage.toFixed(2))
+          Number(percentage.toFixed(2)),
         );
       });
     }
@@ -967,7 +1142,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   // Exclui combinações já selecionadas em outras linhas, mas permite se houver outras contas disponíveis
   const getFilteredGLAccounts = (
     costCenterId: string,
-    currentIndex: number
+    currentIndex: number,
   ) => {
     if (!costCenterId) {
       return glAccounts.filter((acc) => acc.isActive);
@@ -979,7 +1154,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
       .map((m) => m.glAccountId);
 
     const availableAccounts = glAccounts.filter(
-      (acc) => acc.isActive && linkedGLAccountIds.includes(acc.id)
+      (acc) => acc.isActive && linkedGLAccountIds.includes(acc.id),
     );
 
     // Obter combinações já selecionadas em outras linhas (exceto a linha atual)
@@ -988,13 +1163,13 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
         (item, idx) =>
           idx !== currentIndex &&
           item.costCenterId === costCenterId &&
-          item.glAccountId !== ""
+          item.glAccountId !== "",
       )
       .map((item) => item.glAccountId);
 
     // Filtrar contas já usadas com este centro de custo
     return availableAccounts.filter(
-      (acc) => !usedCombinations.includes(acc.id)
+      (acc) => !usedCombinations.includes(acc.id),
     );
   };
 
@@ -1002,7 +1177,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
   // Exclui combinações já selecionadas em outras linhas, mas permite se houver outros centros disponíveis
   const getFilteredCostCenters = (
     glAccountId: string,
-    currentIndex: number
+    currentIndex: number,
   ) => {
     if (!glAccountId) {
       // Se não há conta contábil selecionada, mostrar todos os centros de custo
@@ -1012,7 +1187,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
           (item, idx) =>
             idx !== currentIndex &&
             item.costCenterId !== "" &&
-            item.glAccountId !== ""
+            item.glAccountId !== "",
         )
         .map((item) => `${item.costCenterId}-${item.glAccountId}`);
 
@@ -1026,7 +1201,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
 
         // Contar quantas combinações ainda estão disponíveis
         const availableCombinations = linkedGLAccountIds.filter(
-          (glId) => !usedCombinations.includes(`${cc.id}-${glId}`)
+          (glId) => !usedCombinations.includes(`${cc.id}-${glId}`),
         );
 
         return availableCombinations.length > 0;
@@ -1039,7 +1214,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
       .map((m) => m.costCenterId);
 
     const availableCostCenters = costCenters.filter(
-      (cc) => cc.isActive && linkedCostCenterIds.includes(cc.id)
+      (cc) => cc.isActive && linkedCostCenterIds.includes(cc.id),
     );
 
     // Obter combinações já selecionadas em outras linhas (exceto a linha atual)
@@ -1048,13 +1223,13 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
         (item, idx) =>
           idx !== currentIndex &&
           item.glAccountId === glAccountId &&
-          item.costCenterId !== ""
+          item.costCenterId !== "",
       )
       .map((item) => item.costCenterId);
 
     // Filtrar centros de custo já usados com esta conta contábil
     return availableCostCenters.filter(
-      (cc) => !usedCombinations.includes(cc.id)
+      (cc) => !usedCombinations.includes(cc.id),
     );
   };
 
@@ -1064,7 +1239,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
       payerAccountingMatrix.filter(
         (balance) =>
           balance.costCenterId === costCenterId &&
-          balance.glAccountId === glAccountId
+          balance.glAccountId === glAccountId,
       )[0]?.balance || 0
     );
   };
@@ -1193,7 +1368,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                       <Select
                         onValueChange={(value) => {
                           const selectedBen = beneficiaries.find(
-                            (b) => b.id === value
+                            (b) => b.id === value,
                           );
                           if (selectedBen?.name === "PORTCO") {
                             pendingBeneficiaryRef.current = value;
@@ -1256,7 +1431,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                   (u) =>
                                     u.function === "Diretora Financeira" ||
                                     u.function === "CFO" ||
-                                    u.function === "Gerente"
+                                    u.function === "Gerente",
                                 )
                                 .map((user) => (
                                   <SelectItem key={user.id} value={user.id}>
@@ -1275,7 +1450,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                 setPortCoJustification(e.target.value)
                               }
                               placeholder={t(
-                                "newPOPortCo.justificationPlaceholder"
+                                "newPOPortCo.justificationPlaceholder",
                               )}
                               className="border-amber-500 focus:ring-amber-500 min-h-20"
                             />
@@ -1391,7 +1566,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                   name="icApproved"
                   render={({ field }) => {
                     const selectedExpenseNature = expenseNatures.find(
-                      (en) => en.id === watchExpenseNatureId
+                      (en) => en.id === watchExpenseNatureId,
                     );
                     return (
                       <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
@@ -1419,6 +1594,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                       <FormControl>
                         <Checkbox
                           checked={field.value}
+                          disabled={subtype !== "servico"}
                           onCheckedChange={field.onChange}
                         />
                       </FormControl>
@@ -1482,7 +1658,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                           {fields.map((field, index) => {
                             const currentItem = watchCostCenterItems[index];
                             const selectedCompany = companies.find(
-                              (c) => c.id === currentItem?.companyId
+                              (c) => c.id === currentItem?.companyId,
                             );
                             const hasBalanceIssue =
                               (currentItem?.amount || 0) >
@@ -1492,18 +1668,18 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                             const filteredCostCentersForRow =
                               getFilteredCostCenters(
                                 currentItem?.glAccountId || "",
-                                index
+                                index,
                               );
                             const filteredGLAccountsForRow =
                               getFilteredGLAccounts(
                                 currentItem?.costCenterId || "",
-                                index
+                                index,
                               );
 
                             // Obtém Saldo
                             const getBalanceForRow = getBalanceCompany(
                               currentItem?.costCenterId || "",
-                              currentItem?.glAccountId || ""
+                              currentItem?.glAccountId || "",
                             );
 
                             return (
@@ -1578,7 +1754,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                           }
                                           className={cn(
                                             hasBalanceIssue &&
-                                              "border-destructive focus-visible:ring-destructive"
+                                              "border-destructive focus-visible:ring-destructive",
                                           )}
                                         />
                                       );
@@ -1608,23 +1784,23 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                         onClick={() => {
                                           form.setValue(
                                             `costCenterItems.${index}.costCenterId`,
-                                            ""
+                                            "",
                                           );
                                           form.setValue(
                                             `costCenterItems.${index}.glAccountId`,
-                                            ""
+                                            "",
                                           );
                                           form.setValue(
                                             `costCenterItems.${index}.companyId`,
-                                            ""
+                                            "",
                                           );
                                           form.setValue(
                                             `costCenterItems.${index}.amount`,
-                                            0
+                                            0,
                                           );
                                           form.setValue(
                                             `costCenterItems.${index}.percentage`,
-                                            0
+                                            0,
                                           );
                                         }}
                                       >
@@ -1725,12 +1901,12 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                       role="combobox"
                                       className={cn(
                                         "w-full justify-between font-normal",
-                                        !field.value && "text-muted-foreground"
+                                        !field.value && "text-muted-foreground",
                                       )}
                                     >
                                       {field.value
                                         ? suppliers.find(
-                                            (sup) => sup.id === field.value
+                                            (sup) => sup.id === field.value,
                                           )?.taxId
                                         : t("newPO.select")}
                                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1771,7 +1947,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                                   "mr-2 h-4 w-4 shrink-0",
                                                   sup.id === field.value
                                                     ? "opacity-100"
-                                                    : "opacity-0"
+                                                    : "opacity-0",
                                                 )}
                                               />
                                               <div className="flex flex-col flex-1 min-w-0">
@@ -1785,7 +1961,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                                   "ml-2 px-2 py-0.5 text-[10px] font-medium rounded-full shrink-0",
                                                   sup.isApproved
                                                     ? "bg-success/10 text-success border border-success/30"
-                                                    : "bg-warning/10 text-warning border border-warning/30"
+                                                    : "bg-warning/10 text-warning border border-warning/30",
                                                 )}
                                               >
                                                 {sup.isApproved
@@ -1823,12 +1999,12 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                 role="combobox"
                                 className={cn(
                                   "w-full justify-between font-normal",
-                                  !watchSupplierId && "text-muted-foreground"
+                                  !watchSupplierId && "text-muted-foreground",
                                 )}
                               >
                                 {watchSupplierId
                                   ? suppliers.find(
-                                      (sup) => sup.id === watchSupplierId
+                                      (sup) => sup.id === watchSupplierId,
                                     )?.legalName
                                   : t("newPO.select")}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1868,7 +2044,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                               "mr-2 h-4 w-4 shrink-0",
                                               sup.id === watchSupplierId
                                                 ? "opacity-100"
-                                                : "opacity-0"
+                                                : "opacity-0",
                                             )}
                                           />
                                           <div className="flex flex-col flex-1 min-w-0">
@@ -1882,7 +2058,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                               "ml-2 px-2 py-0.5 text-[10px] font-medium rounded-full shrink-0",
                                               sup.isApproved
                                                 ? "bg-success/10 text-success border border-success/30"
-                                                : "bg-warning/10 text-warning border border-warning/30"
+                                                : "bg-warning/10 text-warning border border-warning/30",
                                             )}
                                           >
                                             {sup.isApproved
@@ -1914,15 +2090,15 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                 role="combobox"
                                 className={cn(
                                   "w-full justify-between font-normal",
-                                  !watchSupplierId && "text-muted-foreground"
+                                  !watchSupplierId && "text-muted-foreground",
                                 )}
                               >
                                 {watchSupplierId
                                   ? suppliers.find(
-                                      (sup) => sup.id === watchSupplierId
+                                      (sup) => sup.id === watchSupplierId,
                                     )?.tradeName ||
                                     suppliers.find(
-                                      (sup) => sup.id === watchSupplierId
+                                      (sup) => sup.id === watchSupplierId,
                                     )?.legalName
                                   : t("newPO.select")}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1962,7 +2138,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                               "mr-2 h-4 w-4 shrink-0",
                                               sup.id === watchSupplierId
                                                 ? "opacity-100"
-                                                : "opacity-0"
+                                                : "opacity-0",
                                             )}
                                           />
                                           <div className="flex flex-col flex-1 min-w-0">
@@ -1978,7 +2154,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                               "ml-2 px-2 py-0.5 text-[10px] font-medium rounded-full shrink-0",
                                               sup.isApproved
                                                 ? "bg-success/10 text-success border border-success/30"
-                                                : "bg-warning/10 text-warning border border-warning/30"
+                                                : "bg-warning/10 text-warning border border-warning/30",
                                             )}
                                           >
                                             {sup.isApproved
@@ -2024,6 +2200,165 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                             {t("newPO.supplierNotApprovedAlert")}
                           </p>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Seleção de Contrato (quando obrigatório) */}
+                    {requiresContractSelection && watchSupplierId && (
+                      <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                        <div className="flex items-center gap-2">
+                          <FileCheck className="h-5 w-5 text-primary" />
+                          <Label className="text-base font-medium">
+                            {t("newPO.contractSelection")}{" "}
+                            <span className="text-destructive">*</span>
+                          </Label>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground">
+                          {t("newPO.contractSelectionDescription")}
+                        </p>
+
+                        {/* Alerta se já existe solicitação pendente */}
+                        {hasPendingOrLocalContractRequest && (
+                          <div className="flex items-start gap-3 p-3 border border-info/50 bg-info/10 rounded-lg">
+                            <Clock className="h-5 w-5 text-info shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-info">
+                                {t("newPO.pendingContractRequestTitle")}
+                              </p>
+                              <p className="text-sm text-info/80 mt-1">
+                                {t("newPO.pendingContractRequestDescription")}
+                              </p>
+                              {hasStartPendingOrLocalContractRequest && (
+                                <div className="mt-3">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleRequestCancelContract}
+                                    disabled={hasRequestedCancellation}
+                                  >
+                                    {hasRequestedCancellation
+                                      ? t("newPO.cancelContractRequestProcessing")
+                                      : t("newPO.requestCancelContractRequest")}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Contrato selecionado */}
+                        {selectedContractId && contractAction === "select" && (
+                          <div className="flex items-center gap-3 p-3 border border-success/50 bg-success/10 rounded-lg">
+                            <Check className="h-5 w-5 text-success shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-success">
+                                {t("newPO.contractSelected")}
+                              </p>
+                              <p className="text-sm text-success/80 truncate">
+                                {supplierAllContracts.find(c => c.id === selectedContractId)?.fileName}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setShowContractSelectorDialog(true)
+                                }
+                              >
+                                {t("common.edit")}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedContractId("");
+                                  setContractAction("");
+                                }}
+                              >
+                                {t("newPO.clearContractSelection")}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Solicitação de contrato selecionada */}
+                        {contractAction === "request" && (
+                          <div className="flex items-center gap-3 p-3 border border-primary/50 bg-primary/10 rounded-lg">
+                            <FileText className="h-5 w-5 text-primary shrink-0" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-primary">
+                                {t("newPO.contractRequestSelected")}
+                              </p>
+                              <p className="text-sm text-primary/80">
+                                {t("newPO.requestNewContractDescription")}
+                              </p>
+                            </div>
+                            {!hasPendingOrLocalContractRequest && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setContractAction("");
+                                  setShowContractSelectorDialog(true);
+                                }}
+                              >
+                                {t("common.edit")}
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Botões de ação (quando nenhuma opção selecionada) */}
+                        {!selectedContractId &&
+                          contractAction !== "request" &&
+                          !hasPendingOrLocalContractRequest && (
+                            <div className="flex flex-col sm:flex-row gap-3">
+                            {supplierAllContracts.length > 0 && supplierValidContracts.length > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setShowContractSelectorDialog(true)}
+                                className="gap-2 flex-1"
+                              >
+                                <FileCheck className="h-4 w-4" />
+                                {t("contractSelector.selectContract")}
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setContractAction("request");
+                                setShowContractRequestDialog(true);
+                              }}
+                              className="gap-2 flex-1"
+                            >
+                              <FileText className="h-4 w-4" />
+                              {t("newPO.requestNewContract")}
+                            </Button>
+                            </div>
+                          )}
+
+                        {/* Aviso quando não há contratos válidos */}
+                        {supplierAllContracts.length > 0 && supplierValidContracts.length === 0 && !contractAction && (
+                          <div className="flex items-start gap-3 p-3 border border-warning/50 bg-warning/10 rounded-lg">
+                            <AlertCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-warning">
+                                {t("newPO.noValidContractsTitle")}
+                              </p>
+                              <p className="text-sm text-warning/80 mt-1">
+                                {t("newPO.noValidContractsDescription")}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2512,6 +2847,104 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                       <Select
                         value={paymentDay}
                         onValueChange={(value) => {
+                          if (!isOutsidePaymentWindow) {
+                            const openDate = openedAtRef.current;
+                            if (isBRL) {
+                              const n = parseInt(value, 10);
+                              const windows = [5, 15, 25];
+                              if (!Number.isNaN(n) && windows.includes(n)) {
+                                const resolved = getNextValidPaymentDate({
+                                  openDate,
+                                  selectedDay: n as 5 | 15 | 25,
+                                  minDaysAdvance: MIN_DAYS_ADVANCE,
+                                  isOutsidePaymentWindow,
+                                  isBRL: true,
+                                });
+                                const resolvedDay =
+                                  resolved.day === "ultimo"
+                                    ? "ultimo"
+                                    : resolved.day.toString();
+                                // Notificar usuário se a data foi ajustada
+                                if (resolved.day !== n) {
+                                  setPaymentDayAdjustment({
+                                    originalDay: n.toString(),
+                                    newDay: resolvedDay,
+                                  });
+                                  toast.info(t("newPO.paymentDateAdjusted"), {
+                                    description: t(
+                                      "newPO.paymentDateAdjustedDescription",
+                                      {
+                                        originalDay: n,
+                                        newDay: resolvedDay,
+                                        minDays: MIN_DAYS_ADVANCE,
+                                      },
+                                    ),
+                                  });
+                                } else {
+                                  setPaymentDayAdjustment(null);
+                                }
+                                setPaymentDay(resolvedDay);
+                                return;
+                              }
+                            } else {
+                              // Pagamentos internacionais: 10, 20, ultimo
+                              const intlWindows = [10, 20, "ultimo"];
+                              const selectedDay =
+                                value === "ultimo"
+                                  ? "ultimo"
+                                  : parseInt(value, 10);
+                              if (
+                                selectedDay === "ultimo" ||
+                                (!Number.isNaN(selectedDay) &&
+                                  intlWindows.includes(selectedDay))
+                              ) {
+                                const resolved = getNextValidPaymentDate({
+                                  openDate,
+                                  selectedDay: selectedDay as
+                                    | 10
+                                    | 20
+                                    | "ultimo",
+                                  minDaysAdvance: MIN_DAYS_ADVANCE,
+                                  isOutsidePaymentWindow,
+                                  isBRL: false,
+                                });
+                                const resolvedDay =
+                                  resolved.day === "ultimo"
+                                    ? "ultimo"
+                                    : resolved.day.toString();
+                                // Notificar usuário se a data foi ajustada
+                                if (resolved.day !== selectedDay) {
+                                  const originalLabel =
+                                    selectedDay === "ultimo"
+                                      ? t("newPO.lastBusinessDay")
+                                      : selectedDay.toString();
+                                  const newLabel =
+                                    resolved.day === "ultimo"
+                                      ? t("newPO.lastBusinessDay")
+                                      : resolved.day.toString();
+                                  setPaymentDayAdjustment({
+                                    originalDay: originalLabel,
+                                    newDay: newLabel,
+                                  });
+                                  toast.info(t("newPO.paymentDateAdjusted"), {
+                                    description: t(
+                                      "newPO.paymentDateAdjustedDescription",
+                                      {
+                                        originalDay: originalLabel,
+                                        newDay: newLabel,
+                                        minDays: MIN_DAYS_ADVANCE,
+                                      },
+                                    ),
+                                  });
+                                } else {
+                                  setPaymentDayAdjustment(null);
+                                }
+                                setPaymentDay(resolvedDay);
+                                return;
+                              }
+                            }
+                          }
+                          setPaymentDayAdjustment(null);
                           setPaymentDay(value);
                         }}
                         disabled={isOutsidePaymentWindow}
@@ -2544,6 +2977,18 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                         </SelectContent>
                       </Select>
 
+                      {/* Indicador de ajuste automático da data de pagamento */}
+                      {paymentDayAdjustment && !isOutsidePaymentWindow && (
+                        <p className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {t("newPO.paymentDateAdjustedDescription", {
+                            originalDay: paymentDayAdjustment.originalDay,
+                            newDay: paymentDayAdjustment.newDay,
+                            minDays: MIN_DAYS_ADVANCE,
+                          })}
+                        </p>
+                      )}
+
                       {/* Indicador de pagamento no próximo mês */}
                       {paymentDateInfo?.isNextMonth &&
                         !isOutsidePaymentWindow && (
@@ -2552,7 +2997,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                             {t("newPO.schaduledPaymentDays")}{" "}
                             {paymentDateInfo.paymentDate.toLocaleDateString(
                               language === "pt" ? "pt-BR" : "en-US",
-                              {}
+                              {},
                             )}
                           </p>
                         )}
@@ -2631,7 +3076,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                                 setPaymentJustification(e.target.value)
                               }
                               placeholder={t(
-                                "newPO.paymentJustificationPlaceholder"
+                                "newPO.paymentJustificationPlaceholder",
                               )}
                               className="min-h-20 border-amber-500/50 focus:border-amber-500"
                             />
@@ -2658,7 +3103,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                         <Select
                           value={paymentFrequency}
                           onValueChange={(
-                            value: "unico" | "parcelado" | "recorrente"
+                            value: "unico" | "parcelado" | "recorrente",
                           ) => {
                             setPaymentFrequency(value);
                             if (value === "unico") {
@@ -2708,7 +3153,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                             className={cn(
                               (paymentFrequency === "unico" ||
                                 paymentFrequency === "recorrente") &&
-                                "bg-muted cursor-not-allowed"
+                                "bg-muted cursor-not-allowed",
                             )}
                           />
                         </div>
@@ -2768,7 +3213,7 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
                 <div>
                   <Label>{t("newPO.requester")}</Label>
                   <Input
-                    className="mt-2 bg-muted"
+                    className="mt-4 bg-muted"
                     value={users[0]?.name || "Usuário Logado"}
                     disabled
                     readOnly
@@ -2976,6 +3421,46 @@ const ProductsServicesForm = ({ poInitialData }: ProductsServicesFormProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de Solicitação de Contrato */}
+      {selectedSupplier && (
+        <ContractRequestDialog
+          open={showContractRequestDialog}
+          onOpenChange={(open) => {
+            setShowContractRequestDialog(open);
+            if (!open && contractRequestJustSubmittedRef.current) {
+              contractRequestJustSubmittedRef.current = false;
+              return;
+            }
+            if (!open && !hasPendingOrLocalContractRequest) {
+              setContractAction("");
+            }
+          }}
+          origin="po_creation"
+          supplier={{
+            id: selectedSupplier.id,
+            legalName: selectedSupplier.legalName,
+            taxId: selectedSupplier.taxId,
+            scope: selectedSupplier.supplierScope || "NATIONAL",
+          }}
+          onSuccess={() => {
+            // Keep the "request" action selected to indicate pending request
+            setHasLocalContractRequest(true);
+            contractRequestJustSubmittedRef.current = true;
+          }}
+        />
+      )}
+
+      {/* Dialog de Seleção de Contrato */}
+      <ContractSelectorDialog
+        open={showContractSelectorDialog}
+        onOpenChange={setShowContractSelectorDialog}
+        contracts={supplierAllContracts}
+        onSelect={(contractId) => {
+          setSelectedContractId(contractId);
+          setContractAction("select");
+        }}
+      />
     </>
   );
 };

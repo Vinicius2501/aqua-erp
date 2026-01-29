@@ -1,5 +1,6 @@
 // Modelo completo (consolidado) — pronto para você migrar/ajustar no projeto.
 
+/** Identificador único no formato UUID v4. Ex.: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" */
 export type ID = string;
 export type ISODateString = string; // ex.: "2025-12-20T03:00:00.000Z"
 
@@ -33,7 +34,7 @@ export const allowedStepsByStatus = {
 
 export function isStepAllowedForStatus(
   status: POStatus,
-  step: POStep
+  step: POStep,
 ): boolean {
   return (allowedStepsByStatus[status] as readonly POStep[]).includes(step);
 }
@@ -55,7 +56,7 @@ export const allowedSubtypesByType: { [K in POType]: readonly POSubtype<K>[] } =
 
 export function isSubtypeAllowedForType<T extends POType>(
   type: T,
-  subtype: string
+  subtype: string,
 ): subtype is POSubtype<T> {
   return (allowedSubtypesByType[type] as readonly string[]).includes(subtype);
 }
@@ -366,6 +367,10 @@ export interface PurchaseOrderBase {
 
   notes?: string | null;
 
+  // Contract-related fields (snapshot from supplier)
+  supplierRequiresContract?: boolean; // Snapshot of Supplier.requiresContract at PO creation
+  supplierContractDocumentId?: ID | null; // Selected contract document when supplier requires contract
+
   createdBy: ID;
   createdAt: ISODateString;
   updatedAt: ISODateString;
@@ -415,12 +420,47 @@ export interface POApprovalStep {
   comments?: string | null;
 }
 
+export interface POInstallmentAttachment {
+  id: ID;
+  installmentId: ID;
+  fileName: string;
+  fileType: "boleto" | "nota_fiscal";
+  fileUrl: string;
+  uploadedAt: ISODateString;
+  uploadedByUserId?: ID | null;
+  uploadedByUserName?: string | null;
+}
+
+export interface POInstallmentPaymentInfo {
+  bank?: string | null;
+  agency?: string | null;
+  accountNumber?: string | null;
+  confirmed?: boolean;
+}
+
+export interface POInstallment {
+  id: ID;
+  purchaseOrderId: ID;
+  installmentNumber: number;
+  dueDate: ISODateString;
+  payerCompanyId: ID;
+  amount: number;
+  status: InstallmentPaymentStatus;
+  paymentInfo?: POInstallmentPaymentInfo | null;
+  attachments: POInstallmentAttachment[];
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export type POInstallmentPaymentHistoryEvent = InstallmentPaymentEvent;
+
+export type POInstallmentPaymentHistory = InstallmentWithPaymentHistory;
+
 /* DTO/Views */
-export interface PurchaseOrderExpanded
-  extends Omit<
-    PurchaseOrder,
-    "expenseNatureId" | "beneficiaryId" | "currencyId" | "supplierId"
-  > {
+export interface PurchaseOrderExpanded extends Omit<
+  PurchaseOrder,
+  "expenseNatureId" | "beneficiaryId" | "currencyId" | "supplierId"
+> {
   expenseNature: ExpenseNature;
   beneficiary: Beneficiary;
   currency: Currency;
@@ -456,7 +496,7 @@ export interface POStats {
 
 /** Regra corporativa simples: BRL => NATIONAL; demais => INTERNATIONAL */
 export function getPaymentScopeByCurrencyCode(
-  code: CurrencyCode
+  code: CurrencyCode,
 ): PaymentScope {
   return code === "BRL" ? "NATIONAL" : "INTERNATIONAL";
 }
@@ -464,7 +504,7 @@ export function getPaymentScopeByCurrencyCode(
 /* Validação rápida do par status/step no front. */
 export function validateStatusStepOrThrow(
   status: POStatus,
-  step: POStep
+  step: POStep,
 ): void {
   if (!isStepAllowedForStatus(status, step)) {
     throw new Error(`Combinação inválida: status='${status}' step='${step}'`);
@@ -597,7 +637,7 @@ export interface POHistoryEvent {
   newStep?: POStep | null;
 
   // Quem realizou a ação
-  performedByUserId: Number;
+  performedByUserId: ID;
   performedByUserName: string;
 
   // Metadados adicionais (flexível para diferentes tipos de eventos)
@@ -608,4 +648,211 @@ export interface POHistoryEvent {
 
 export interface PurchaseOrderWithHistory extends PurchaseOrderExpanded {
   history: POHistoryEvent[];
+}
+
+/* Histórico de Pagamento das Parcelas */
+export type InstallmentPaymentStatus =
+  | "pendente"
+  | "agendado"
+  | "aguardando_pagamento"
+  | "pago"
+  | "cancelado";
+
+export type InstallmentPaymentEventType =
+  | "created" // Parcela criada
+  | "scheduled" // Pagamento agendado
+  | "payment_request_sent" // Solicitação de pagamento enviada
+  | "payment_approved" // Pagamento aprovado
+  | "payment_rejected" // Pagamento rejeitado
+  | "payment_completed" // Pagamento realizado
+  | "boleto_added" // Boleto inserido
+  | "invoice_added" // Nota fiscal inserida
+  | "attachment_added" // Anexo adicionado
+  | "due_date_changed" // Data de vencimento alterada
+  | "amount_adjusted" // Valor ajustado
+  | "cancelled"; // Parcela cancelada
+
+export interface InstallmentPaymentEvent {
+  id: ID;
+  installmentId: ID;
+  purchaseOrderId: ID;
+
+  eventType: InstallmentPaymentEventType;
+  title: string;
+  description?: string | null;
+
+  previousStatus?: InstallmentPaymentStatus | null;
+  newStatus?: InstallmentPaymentStatus | null;
+
+  // Quem realizou a ação
+  performedByUserId: string;
+  performedByUserName: string;
+
+  // Metadados adicionais
+  metadata?: Record<string, unknown> | null;
+
+  createdAt: ISODateString;
+}
+
+export interface InstallmentWithPaymentHistory {
+  id: ID;
+  purchaseOrderId: ID;
+  installmentNumber: number;
+  dueDate: ISODateString;
+  amount: number;
+  status: InstallmentPaymentStatus;
+  paymentHistory: InstallmentPaymentEvent[];
+}
+
+// =====================================================
+// SUPPLIER DOCUMENTS & CONTRACTS (New Structure)
+// =====================================================
+
+/**
+ * Categorias de documentos de fornecedor
+ * No futuro, o admin poderá cadastrar novas categorias dinamicamente
+ */
+export interface DocumentCategory {
+  id: ID;
+  code: string; // Ex: "contract", "receipt", "certificate"
+  name: string;
+  description?: string;
+  requiresValidityDate: boolean; // Se o documento precisa de data de vigência
+  isActive: boolean;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+/**
+ * Documento do fornecedor (contratos, comprovantes, anexos gerais, etc.)
+ * Um fornecedor pode ter N documentos de diferentes categorias
+ */
+export interface SupplierDocument {
+  id: ID;
+  supplierId: ID;
+  categoryId: ID; // Referência para DocumentCategory
+  categoryCode: string; // Denormalizado para facilitar queries
+
+  // Informações do arquivo
+  fileName: string;
+  fileSize: string; // Ex: "2.4 MB"
+  fileUrl?: string;
+  mimeType?: string;
+
+  // Vigência (obrigatório para contratos)
+  hasValidity: boolean;
+  validFrom?: ISODateString;
+  validUntil?: ISODateString;
+
+  // Metadados
+  description?: string;
+  notes?: string;
+
+  // Controle
+  isActive: boolean;
+  uploadedBy: ID; // User ID
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+/**
+ * Status de uma solicitação de contrato
+ */
+export type ContractRequestStatus =
+  | "pendente" // Aguardando Legal iniciar
+  | "em_confeccao" // Legal está trabalhando
+  | "finalizada"; // Contrato anexado e finalizado
+
+/**
+ * Origem da solicitação de contrato
+ */
+export type ContractRequestOrigin =
+  | "supplier_registration" // Cadastro/Edição de fornecedor
+  | "po_creation" // Criação/Edição de PO
+  | "legal_manual"; // Criado manualmente na tela Legal
+
+/**
+ * Solicitação de contrato para o Legal
+ * Gera uma tarefa para o time jurídico confeccionar/anexar contrato
+ */
+export interface ContractRequest {
+  id: ID;
+  code: string; // Ex: "SC-0007-2025" - Código único da solicitação
+  supplierId: ID;
+
+  // Informações do fornecedor (denormalizadas para exibição)
+  supplierTaxId: string; // CNPJ/CPF ou TaxId
+  supplierLegalName: string;
+  supplierScope: "NATIONAL" | "INTERNATIONAL";
+
+  // Controle da solicitação
+  status: ContractRequestStatus;
+  origin: ContractRequestOrigin;
+
+  // Quem solicitou
+  requestedBy: ID; // User ID
+  requestedAt: ISODateString;
+
+  // Observações do solicitante
+  notes?: string;
+
+  // Quando Legal iniciou o trabalho
+  startedBy?: ID;
+  startedAt?: ISODateString;
+
+  // Quando foi finalizado
+  finishedBy?: ID;
+  finishedAt?: ISODateString;
+
+  // Documento anexado (quando finalizado)
+  resultDocumentId?: ID; // Referência para SupplierDocument
+  resultValidUntil?: ISODateString; // Data de vigência definida
+
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+// =====================================================
+// LEGACY CONTRACT TYPES (Keeping for backward compatibility)
+// =====================================================
+
+// Contract Attachments
+export type ContractOrigin =
+  | "po_creation" // Anexado durante criação da PO
+  | "legal_approval" // Anexado durante aprovação do Legal
+  | "supplier_portal" // Enviado pelo fornecedor
+  | "manual_upload" // Upload manual
+  | "system_migration"; // Migrado de sistema legado
+
+export interface ContractAttachment {
+  id: ID;
+  poId: ID;
+  fileName: string;
+  fileSize: string; // Ex: "2.4 MB"
+  origin: ContractOrigin;
+  uploadedBy: ID; // User ID
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+  notes?: string; // Observações sobre o contrato
+  isActive: boolean; // Se é o contrato vigente
+  activatedBy?: ID; // User ID que marcou como vigente
+  activatedAt?: ISODateString; // Data/hora que foi marcado como vigente
+  version?: number; // Número da versão do contrato
+}
+
+// Legal Contracts (Master contracts)
+export type ContractStatus = "active" | "expired" | "cancelled";
+
+export interface LegalContract {
+  id: ID;
+  number: string; // Ex: "CTR-2024-001"
+  title: string;
+  supplierId?: ID; // Supplier ID
+  supplierName: string; // Nome do fornecedor
+  startDate: ISODateString;
+  endDate: ISODateString;
+  value: number;
+  status: ContractStatus;
+  linkedPOIds: ID[]; // IDs das POs vinculadas
+  notes?: string;
 }

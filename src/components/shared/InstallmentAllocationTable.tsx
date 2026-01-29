@@ -41,6 +41,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -114,7 +115,7 @@ function getStatusConfig(
   return {
     provisionado: {
       label: t("installment.provisioned"),
-      className: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      className: "bg-amber-500/10 text-amber-600 dark:text-amber-700",
       description: t("installment.provisionedDesc"),
     },
     agendado: {
@@ -441,7 +442,9 @@ function PaymentConfirmDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="h-5 w-5" />
-            {t("installment.paymentinfoMessage")}
+            {t("installment.paymentinfoMessage", {
+              "installment.installmentNumber": installment.installmentNumber,
+            })}
           </DialogTitle>
           <DialogDescription>
             {isEditing
@@ -604,6 +607,11 @@ export function InstallmentAllocationTable({
         defaultPaymentInfo
       )
   );
+  
+  // Estado para anexos globais (compartilhados entre todas as parcelas)
+  const [globalAttachments, setGlobalAttachments] = useState<AttachmentData[]>([]);
+  const globalFileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedGlobalType, setSelectedGlobalType] = useState<"boleto" | "nota_fiscal">("nota_fiscal");
 
   const isTransferPayment = paymentMethodCode === "TRANSFERENCIA";
 
@@ -790,6 +798,49 @@ export function InstallmentAllocationTable({
     toast.success(t("installment.attachmentRemoved"));
   };
 
+  // Handler para remover anexo global
+  const handleRemoveGlobalAttachment = (attachmentId: string) => {
+    setGlobalAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    toast.success("Anexo global removido de todos os pagamentos");
+  };
+
+  // Aplicar anexos globais automaticamente quando adicionados
+  const handleGlobalFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const newAttachment: AttachmentData = {
+        id: `global-att-${Date.now()}`,
+        name: file.name,
+        type: selectedGlobalType,
+        url: URL.createObjectURL(file),
+        uploadedAt: new Date().toISOString(),
+      };
+      
+      setGlobalAttachments((prev) => [...prev, newAttachment]);
+      
+      // Aplicar a todos os pagamentos imediatamente
+      setInstallmentData((prev) =>
+        prev.map((item) => {
+          const newStatus: PaymentStatus =
+            item.status === "provisionado" ? "agendado" : item.status;
+          return {
+            ...item,
+            attachments: [...item.attachments, newAttachment],
+            status: newStatus,
+          };
+        })
+      );
+      
+      toast.success(
+        `${selectedGlobalType === "boleto" ? t("installment.boleto") : t("installment.invoice")} anexado a todos os ${installmentCount || 1} pagamento(s)`
+      );
+      
+      if (globalFileInputRef.current) {
+        globalFileInputRef.current.value = "";
+      }
+    }
+  };
+
   const handleConfirmPayment = (installmentId: string) => {
     setInstallmentData((prev) =>
       prev.map((item) =>
@@ -813,6 +864,112 @@ export function InstallmentAllocationTable({
 
   return (
     <div className={cn("space-y-4", className)}>
+      {/* Seção de Anexos Globais (para todos os pagamentos) */}
+      {!readOnly && (installmentCount || 1) > 1 && (
+        <Card className="border-2 border-dashed border-primary/20 bg-primary/5">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Anexos para Todos os Pagamentos
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Documentos que serão aplicados a todas as {installmentCount || 1} parcelas
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={selectedGlobalType}
+                  onValueChange={(v) => setSelectedGlobalType(v as "boleto" | "nota_fiscal")}
+                >
+                  <SelectTrigger className="w-36 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="boleto">{t("installment.boleto")}</SelectItem>
+                    <SelectItem value="nota_fiscal">
+                      {t("installment.invoice")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <input
+                  ref={globalFileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleGlobalFileSelect}
+                  className="hidden"
+                />
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => globalFileInputRef.current?.click()}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Anexar para Todos
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          {globalAttachments.length > 0 && (
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap gap-2">
+                {globalAttachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs border-2",
+                      att.type === "boleto"
+                        ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
+                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                    )}
+                  >
+                    {att.type === "boleto" ? (
+                      <Receipt className="h-4 w-4" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
+                    <span className="font-medium">{att.name}</span>
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                      {installmentCount || 1} pagamentos
+                    </Badge>
+                    <div className="flex items-center gap-1 ml-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 p-0 hover:bg-transparent"
+                        onClick={() => toast.info(t("installment.viewFile"))}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 p-0 hover:bg-transparent"
+                        onClick={() => toast.info(t("installment.downloadFile"))}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 p-0 hover:bg-transparent hover:text-destructive"
+                        onClick={() => handleRemoveGlobalAttachment(att.id)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-2">

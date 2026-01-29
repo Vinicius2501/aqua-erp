@@ -12,6 +12,8 @@ import PODetailView from "./pages/POs/PODetailView";
 import Suppliers from "./pages/Suppliers/Suppliers";
 import SupplierDetail from "./pages/Suppliers/SuppliersDetail";
 import NewSupplier from "./pages/Suppliers/NewSupplier";
+import Approvals from "./pages/Approvals/Approvals";
+import Legal from "./pages/Legal/Legal";
 
 const queryClient = new QueryClient();
 
@@ -27,9 +29,11 @@ const App = () => (
             <Route path="/pos/new" element={<NewPO />} />
             <Route path="/pos/:id" element={<PODetailView />} />
             <Route path="/pos/:id/edit" element={<POEdit />} />
+            <Route path="/approvals" element={<Approvals />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/suppliers/new" element={<NewSupplier />} />
             <Route path="/suppliers/:id" element={<SupplierDetail />} />
+            <Route path="/legal" element={<Legal />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
